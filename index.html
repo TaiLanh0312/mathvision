@@ -1,0 +1,672 @@
+<!doctype html>
+<html lang="vi" class="scroll-smooth">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MathVision PRO · AI Suite cho Giáo viên Toán</title>
+  <meta name="description" content="Thin-Client Web App: Dựng hình 3D, chấm đồ thị qua webcam và số hóa công thức LaTeX bằng AI." />
+
+  <!-- Tailwind CSS (Play CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <!-- KaTeX (render công thức) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe', 300: '#93c5fd',
+              400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8',
+            },
+          },
+          boxShadow: {
+            soft: '0 1px 2px 0 rgba(15,23,42,0.04), 0 8px 24px -8px rgba(37,99,235,0.10)',
+            lift: '0 10px 40px -12px rgba(37,99,235,0.22)',
+          },
+          keyframes: {
+            'fade-up': {
+              '0%': { opacity: '0', transform: 'translateY(10px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            },
+            'fade-in': {
+              '0%': { opacity: '0' }, '100%': { opacity: '1' },
+            },
+            'pulse-dot': {
+              '0%,100%': { opacity: '1' }, '50%': { opacity: '0.35' },
+            },
+          },
+          animation: {
+            'fade-up': 'fade-up 0.5s cubic-bezier(0.22,1,0.36,1) both',
+            'fade-in': 'fade-in 0.4s ease-out both',
+            'pulse-dot': 'pulse-dot 1.8s ease-in-out infinite',
+          },
+        },
+      },
+    };
+  </script>
+
+  <style>
+    :root {
+      --z-sticky: 20; --z-dropdown: 30; --z-backdrop: 40;
+      --z-modal: 50; --z-toast: 60; --z-tooltip: 70;
+    }
+    body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+
+    /* Frosted glass sidebar (deliberate, light-theme frost) */
+    .glass {
+      background: rgba(255, 255, 255, 0.72);
+      backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+    }
+
+    /* Ambient page tint behind the glass */
+    .app-bg::before {
+      content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+      background:
+        radial-gradient(60rem 40rem at -10% -5%, rgba(37,99,235,0.08), transparent 60%),
+        radial-gradient(50rem 40rem at 110% 0%, rgba(6,182,212,0.08), transparent 55%);
+    }
+
+    /* Dark technical viewport grid (3D canvas / camera) */
+    .viewport-grid {
+      background-color: #0b1120;
+      background-image:
+        linear-gradient(rgba(59,130,246,0.14) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(59,130,246,0.14) 1px, transparent 1px);
+      background-size: 32px 32px;
+    }
+
+    /* Drop zone */
+    .dropzone { transition: border-color .2s ease, background-color .2s ease, transform .2s ease; }
+    .dropzone.is-drag {
+      border-color: #2563eb; background-color: #eff6ff; transform: scale(1.005);
+    }
+
+    /* Tab panel entrance */
+    .tab-panel { display: none; }
+    .tab-panel.is-active { display: block; }
+    .tab-panel.is-active > * { animation: fade-up 0.5s cubic-bezier(0.22,1,0.36,1) both; }
+
+    /* Custom scrollbars */
+    .scroll-slim::-webkit-scrollbar { width: 8px; height: 8px; }
+    .scroll-slim::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+    .scroll-slim::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    .scroll-slim::-webkit-scrollbar-track { background: transparent; }
+
+    /* Range slider */
+    input[type=range] { accent-color: #2563eb; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .tab-panel.is-active > * { animation: none !important; }
+      * { scroll-behavior: auto !important; }
+    }
+  </style>
+</head>
+
+<body class="app-bg min-h-screen bg-slate-50 font-sans text-slate-700 antialiased">
+
+  <div class="flex min-h-screen">
+
+    <!-- ===================== SIDEBAR ===================== -->
+    <aside class="glass sticky top-0 hidden h-screen w-72 shrink-0 flex-col border-r border-slate-200/70 px-4 py-6 lg:flex" style="z-index: var(--z-sticky)">
+      <!-- Logo -->
+      <div class="mb-8 flex items-center gap-3 px-2">
+        <div class="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 shadow-lift">
+          <svg class="h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
+        </div>
+        <div class="leading-tight">
+          <div class="flex items-center gap-2">
+            <span class="text-base font-bold text-slate-900">MathVision</span>
+            <span class="rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-blue-600 ring-1 ring-blue-100">PRO</span>
+          </div>
+          <span class="text-xs font-medium text-slate-500">AI Suite cho Giáo viên</span>
+        </div>
+      </div>
+
+      <!-- Nav -->
+      <nav class="flex flex-col gap-1" aria-label="Công cụ sư phạm">
+        <p class="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Công cụ sư phạm</p>
+
+        <button data-tab="studio" class="nav-link group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition">
+          <span class="nav-icon grid h-9 w-9 shrink-0 place-items-center rounded-lg transition">
+            <svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 16-9 5-9-5V8l9-5 9 5v8Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+          </span>
+          <span class="flex flex-col items-start leading-tight">
+            <span>Smart 3D Geometry</span>
+            <span class="nav-sub text-xs font-normal text-slate-400">Tách lớp hình học</span>
+          </span>
+        </button>
+
+        <button data-tab="grader" class="nav-link group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition">
+          <span class="nav-icon grid h-9 w-9 shrink-0 place-items-center rounded-lg transition">
+            <svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/></svg>
+          </span>
+          <span class="flex flex-col items-start leading-tight">
+            <span>AI Grader</span>
+            <span class="nav-sub text-xs font-normal text-slate-400">Chấm đồ thị &amp; tự luận</span>
+          </span>
+        </button>
+
+        <button data-tab="latex" class="nav-link group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition">
+          <span class="nav-icon grid h-9 w-9 shrink-0 place-items-center rounded-lg transition">
+            <svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>
+          </span>
+          <span class="flex flex-col items-start leading-tight">
+            <span>Snap to LaTeX</span>
+            <span class="nav-sub text-xs font-normal text-slate-400">Số hóa đề &amp; công thức</span>
+          </span>
+        </button>
+      </nav>
+
+      <!-- Sample library -->
+      <div class="mt-7 flex flex-col gap-1">
+        <p class="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Thư viện bài mẫu</p>
+        <button data-scene="pyramid" class="sample-item flex items-center justify-between rounded-lg px-3 py-2 text-sm text-slate-600 transition hover:bg-slate-100/70 hover:text-slate-900">
+          <span class="flex items-center gap-2"><span class="h-1.5 w-1.5 rounded-full bg-blue-500"></span>Chóp S.ABCD đáy vuông</span>
+          <span class="text-xs text-slate-400">Hình 12</span>
+        </button>
+        <button data-scene="prism" class="sample-item flex items-center justify-between rounded-lg px-3 py-2 text-sm text-slate-600 transition hover:bg-slate-100/70 hover:text-slate-900">
+          <span class="flex items-center gap-2"><span class="h-1.5 w-1.5 rounded-full bg-cyan-500"></span>Lăng trụ tam giác đều</span>
+          <span class="text-xs text-slate-400">Hình 11</span>
+        </button>
+        <button data-graph="y = x³ - 3x² + 2" class="sample-item flex items-center justify-between rounded-lg px-3 py-2 text-sm text-slate-600 transition hover:bg-slate-100/70 hover:text-slate-900">
+          <span class="flex items-center gap-2"><span class="h-1.5 w-1.5 rounded-full bg-indigo-500"></span>Khảo sát hàm bậc 3</span>
+          <span class="text-xs text-slate-400">Đồ thị</span>
+        </button>
+      </div>
+
+      <!-- Footer status -->
+      <div class="mt-auto rounded-xl border border-slate-200/80 bg-white/60 p-3">
+        <div class="flex items-center justify-between">
+          <span class="flex items-center gap-2 text-xs font-medium text-slate-700">
+            <span class="h-2 w-2 animate-pulse-dot rounded-full bg-emerald-500"></span>
+            Thin-Client Cloud
+          </span>
+          <span class="rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] font-medium text-slate-500">Gemini 1.5</span>
+        </div>
+        <p class="mt-2 text-[11px] leading-snug text-slate-400">Tác vụ nặng xử lý tại Cloud. Máy trường chạy mượt 60fps.</p>
+      </div>
+    </aside>
+
+    <!-- ===================== MAIN ===================== -->
+    <div class="flex min-w-0 flex-1 flex-col">
+
+      <!-- Top bar -->
+      <header class="glass sticky top-0 flex h-16 items-center justify-between gap-3 border-b border-slate-200/70 px-4 sm:px-6" style="z-index: var(--z-sticky)">
+        <div class="flex items-center gap-3">
+          <!-- Mobile menu -->
+          <button id="mobileMenuBtn" class="grid h-9 w-9 place-items-center rounded-lg text-slate-600 transition hover:bg-slate-100 lg:hidden" aria-label="Mở menu">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+          </button>
+          <div class="min-w-0">
+            <h1 id="pageTitle" class="truncate text-[15px] font-bold text-slate-900">Smart 3D Geometry Studio</h1>
+            <p id="pageSub" class="truncate text-xs text-slate-500">Dựng &amp; bóc tách hình học không gian theo layer</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <span class="hidden items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-600 ring-1 ring-emerald-100 sm:flex">
+            <span class="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-emerald-500"></span> Oxyz Ready
+          </span>
+          <button id="saveLesson" class="hidden rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:-translate-y-px hover:border-slate-300 hover:shadow sm:inline-flex items-center gap-2">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-6 0v4"/><rect width="18" height="11" x="3" y="11" rx="2"/></svg>
+            Lưu giáo án
+          </button>
+          <button id="newLesson" class="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-cyan-500 px-3.5 py-2 text-sm font-semibold text-white shadow-lift transition hover:-translate-y-px hover:brightness-105 active:translate-y-0">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l1.9 5.1L20 10l-5.1 1.9L13 17l-1.9-5.1L6 10l5.1-1.9L13 3Z"/></svg>
+            Tạo bài mới
+          </button>
+          <div class="relative ml-1">
+            <button id="profileBtn" class="flex items-center gap-2 rounded-lg border border-slate-200 bg-white py-1 pl-1 pr-2 shadow-sm transition hover:border-slate-300">
+              <span id="avatarInitials" class="grid h-7 w-7 place-items-center rounded-md bg-slate-900 text-xs font-bold text-white">MH</span>
+              <span id="profileName" class="hidden text-sm font-medium text-slate-700 md:inline">Thầy Hùng</span>
+              <svg class="h-4 w-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <div id="profileMenu" class="absolute right-0 mt-2 hidden w-60 rounded-xl border border-slate-200 bg-white p-2 shadow-xl" style="z-index: var(--z-dropdown)">
+              <div class="px-3 py-2">
+                <p id="profileNameBig" class="text-sm font-semibold text-slate-900">Thầy Hùng</p>
+                <p id="profileRole" class="text-xs text-slate-500">Giáo viên Toán · Amsterdam HN</p>
+              </div>
+              <hr class="my-1 border-slate-100" />
+              <button id="editProfile" class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50">
+                <svg class="h-4 w-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Đổi tên / trường
+              </button>
+              <button id="viewLessons" class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50">
+                <svg class="h-4 w-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>Giáo án đã lưu
+              </button>
+              <hr class="my-1 border-slate-100" />
+              <button id="logout" class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-rose-600 transition hover:bg-rose-50">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></svg>Đăng xuất
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Content -->
+      <main class="scroll-slim flex-1 overflow-y-auto p-4 sm:p-6" style="height: calc(100vh - 4rem)">
+
+        <!-- ========= TAB 1: SMART 3D GEOMETRY ========= -->
+        <section id="tab-studio" class="tab-panel" role="tabpanel" aria-label="Smart 3D Geometry">
+          <div class="grid grid-cols-1 gap-5 xl:grid-cols-[22rem_minmax(0,1fr)_20rem]">
+
+            <!-- Col 1: Input -->
+            <div class="flex flex-col gap-5">
+              <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+                <div class="mb-3 flex items-center justify-between">
+                  <h2 class="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <svg class="h-4 w-4 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                    Đề bài THPT
+                  </h2>
+                  <button id="scanProblem" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50">
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
+                    Quét ảnh
+                  </button>
+                  <input id="scanProblemFile" type="file" accept="image/*" capture="environment" class="sr-only" />
+                </div>
+                <textarea rows="5" class="scroll-slim w-full resize-none rounded-xl border border-slate-200 bg-slate-50/60 p-3 text-sm leading-relaxed text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-500/10" placeholder="Nhập đề toán hình không gian...">Cho hình chóp S.ABCD đáy ABCD là hình vuông cạnh a, SA ⊥ (ABCD), SA = a√2.
+a) Tính góc giữa SC và (ABCD).
+b) Thiết diện (P) qua A và ⊥ SC.</textarea>
+                <button id="build3d" class="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lift transition hover:-translate-y-px hover:brightness-105 active:translate-y-0">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v4M3 5h4M13 3l1.9 5.1L20 10l-5.1 1.9L13 17l-1.9-5.1L6 10l5.1-1.9L13 3Z"/></svg>
+                  Dựng &amp; Bóc Tách 3D
+                </button>
+                <p id="buildStatus" class="mt-2 hidden items-center gap-1.5 text-xs font-medium"></p>
+              </div>
+
+              <!-- Coordinate entities -->
+              <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+                <div class="mb-3 flex items-center justify-between">
+                  <h2 class="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <svg class="h-4 w-4 text-cyan-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v20M2 12h20"/></svg>
+                    Thực thể toạ độ
+                  </h2>
+                  <span class="rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600 ring-1 ring-emerald-100">Chuẩn 100%</span>
+                </div>
+                <div id="entityList" class="flex flex-col gap-2.5">
+                  <!-- rendered from scene spec by geometry3d.js -->
+                </div>
+                <div id="pointPanel" class="mt-3 hidden border-t border-slate-100 pt-3">
+                  <div class="mb-2 flex items-center justify-between">
+                    <span class="text-xs font-semibold text-slate-500">Điểm (ẩn/hiện)</span>
+                    <button id="pointToggleAll" class="text-[11px] font-medium text-blue-600 hover:underline">Ẩn tất cả</button>
+                  </div>
+                  <div id="pointList" class="flex flex-wrap gap-1.5"><!-- point chips --></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Col 2: 3D Viewport -->
+            <div class="flex flex-col gap-4">
+              <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
+                <!-- viewport toolbar -->
+                <div class="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2.5">
+                  <span class="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-2.5 py-1 font-mono text-xs font-medium text-emerald-300">
+                    <span class="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-emerald-400"></span> <span id="viewportBadge">Oxyz [A = Gốc]</span>
+                  </span>
+                  <div class="flex items-center gap-1">
+                    <button id="view-reset" class="grid h-8 w-8 place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900" title="Đặt lại góc nhìn">
+                      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+                    </button>
+                    <button id="view-full" class="grid h-8 w-8 place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900" title="Toàn màn hình">
+                      <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- canvas placeholder -->
+                <div id="viewport3d" class="viewport-grid relative grid aspect-[4/3] w-full place-items-center">
+                  <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent"></div>
+                  <div class="relative text-center">
+                    <div class="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-white/5 ring-1 ring-white/10">
+                      <svg class="h-8 w-8 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m21 16-9 5-9-5V8l9-5 9 5v8Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                    </div>
+                    <p class="mt-4 text-sm font-medium text-slate-300">Khung canvas Three.js</p>
+                    <p class="mt-1 text-xs text-slate-500">Khối 3D sẽ dựng tại đây sau khi bóc tách đề (Phase 2)</p>
+                  </div>
+                </div>
+
+                <!-- layer toggles -->
+                <div class="flex flex-wrap items-center gap-2 border-t border-slate-200 bg-white px-4 py-3">
+                  <span class="mr-1 text-xs font-medium text-slate-400">Trình tự dựng:</span>
+                  <button id="stepPrev" class="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-slate-600 transition hover:bg-slate-50" title="Bước trước">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M15 6v12l-8-6z"/></svg>
+                  </button>
+                  <button id="stepPlay" class="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-sm transition hover:brightness-105" title="Chạy từng bước">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                  </button>
+                  <button id="stepNext" class="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-slate-600 transition hover:bg-slate-50" title="Bước sau">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M9 6v12l8-6z"/></svg>
+                  </button>
+                  <input id="stepSlider" type="range" min="0" max="0" value="0" class="h-1.5 w-32 cursor-pointer appearance-none rounded-full bg-slate-200" />
+                  <span id="stepLabel" class="text-xs font-semibold text-slate-700">—</span>
+                  <div class="ml-auto flex items-center gap-2 text-xs text-slate-500">
+                    <label for="opacity" class="font-medium">Độ mờ mặt</label>
+                    <input id="opacity" type="range" min="10" max="100" value="45" class="h-1.5 w-24 cursor-pointer appearance-none rounded-full bg-slate-200" />
+                    <span id="opacityVal" class="w-9 text-right font-mono font-medium text-slate-700">45%</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- quick angles + export -->
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-xs font-medium text-slate-400">Góc chiếu nhanh:</span>
+                <button class="quick-angle">Chuẩn</button>
+                <button class="quick-angle">Đáy</button>
+                <button class="quick-angle">Đứng</button>
+                <button class="quick-angle">Cắt (P)</button>
+                <div class="ml-auto flex gap-2">
+                  <button id="img4k" class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:-translate-y-px hover:shadow">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
+                    Ảnh 4K
+                  </button>
+                  <button id="tikz" class="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-px hover:bg-slate-800">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 16 4-4-4-4M6 8l-4 4 4 4M14.5 4l-5 16"/></svg>
+                    TikZ LaTeX
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Col 3: Steps + Solution -->
+            <div class="flex flex-col gap-5">
+              <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+                <div class="mb-4 flex items-center justify-between">
+                  <h2 class="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <svg class="h-4 w-4 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 16-9 5-9-5V8l9-5 9 5v8Z"/><path d="M12 22V12"/></svg>
+                    Trình tự dựng hình
+                  </h2>
+                  <span class="rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-600 ring-1 ring-blue-100">Từng bước</span>
+                </div>
+                <ol id="stepList" class="flex flex-col gap-3"><!-- construction steps --></ol>
+              </div>
+
+              <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+                <div class="mb-3 flex items-center justify-between">
+                  <h2 class="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <svg class="h-4 w-4 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    Lời giải chi tiết
+                  </h2>
+                  <span class="rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600 ring-1 ring-emerald-100">Chuẩn TN</span>
+                </div>
+                <ol id="solutionList" class="flex flex-col gap-2.5"><!-- solution steps --></ol>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ========= TAB 2: GRAPH AI GRADER ========= -->
+        <section id="tab-grader" class="tab-panel" role="tabpanel" aria-label="Graph AI Grader">
+          <div class="mx-auto max-w-6xl">
+            <div class="mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-wider text-blue-600">Automated Vision Grader</p>
+                  <h2 id="gradeTitle" class="mt-1 text-xl font-bold text-slate-900">Chấm bài qua webcam bằng AI Vision</h2>
+                  <p id="gradeSub" class="mt-1 max-w-2xl text-sm text-slate-500">Soi bài học sinh qua webcam hoặc tải ảnh. AI đọc bài, đối chiếu và khoanh vùng lỗi sai (tô đỏ).</p>
+                </div>
+                <span class="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 ring-1 ring-rose-100">
+                  <span class="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-rose-500"></span> WebRTC HD Camera
+                </span>
+              </div>
+
+              <!-- Chế độ chấm -->
+              <div class="mt-4 inline-flex w-fit items-center gap-1 rounded-xl bg-slate-100 p-1">
+                <button id="modeGraph" class="grade-mode is-on rounded-lg px-3 py-1.5 text-xs font-semibold transition">📈 Chấm đồ thị</button>
+                <button id="modeSolution" class="grade-mode rounded-lg px-3 py-1.5 text-xs font-semibold transition">✍️ Chấm bài giải tự luận</button>
+              </div>
+
+              <!-- Đề bài tự do -->
+              <div class="mt-3 flex flex-wrap items-center gap-2">
+                <label for="gradeProblem" class="text-xs font-medium text-slate-400">Đề bài:</label>
+                <input id="gradeProblem" class="min-w-[16rem] flex-1 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2 font-mono text-sm text-slate-700 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-500/10" value="y = (2x+1)/(x-1)" placeholder="Nhập hàm số / đề (gõ, LaTeX, hoặc quét ảnh)…" />
+                <button id="scanGradeProblem" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-2 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50">
+                  <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
+                  Quét ảnh đề
+                </button>
+                <input id="scanGradeFile" type="file" accept="image/*" capture="environment" class="sr-only" />
+                <span class="font-mono text-xs text-slate-400">Thang điểm: 1.00đ</span>
+              </div>
+              <div id="presetRow" class="mt-2 flex flex-wrap items-center gap-2">
+                <span class="text-xs text-slate-400">Mẫu nhanh:</span>
+                <button class="problem-chip is-on">y = (2x+1)/(x−1)</button>
+                <button class="problem-chip">y = x³ − 3x² + 2</button>
+                <button class="problem-chip">y = −x⁴ + 2x² + 1</button>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_24rem]">
+              <!-- webcam -->
+              <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
+                <div class="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                  <span class="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <span class="h-2 w-2 animate-pulse-dot rounded-full bg-rose-500"></span> Camera soi bài thi (Live)
+                  </span>
+                  <span class="font-mono text-xs text-slate-400">1080p · 60 FPS</span>
+                </div>
+                <div id="camStage" class="viewport-grid relative aspect-video w-full overflow-hidden">
+                  <video id="camFeed" class="absolute inset-0 hidden h-full w-full object-contain" autoplay playsinline muted></video>
+                  <img id="camShot" class="absolute inset-0 hidden h-full w-full object-contain" alt="Ảnh bài thi" />
+                  <canvas id="camOverlay" class="pointer-events-none absolute inset-0 h-full w-full"></canvas>
+                  <!-- corner frame -->
+                  <span class="pointer-events-none absolute left-3 top-3 h-6 w-6 rounded-tl-lg border-l-2 border-t-2 border-cyan-400/70"></span>
+                  <span class="pointer-events-none absolute right-3 top-3 h-6 w-6 rounded-tr-lg border-r-2 border-t-2 border-cyan-400/70"></span>
+                  <span class="pointer-events-none absolute bottom-3 left-3 h-6 w-6 rounded-bl-lg border-b-2 border-l-2 border-cyan-400/70"></span>
+                  <span class="pointer-events-none absolute bottom-3 right-3 h-6 w-6 rounded-br-lg border-b-2 border-r-2 border-cyan-400/70"></span>
+                  <div id="camPlaceholder" class="absolute inset-0 grid place-items-center text-center">
+                    <div>
+                      <div class="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-white/5 ring-1 ring-white/10">
+                        <svg class="h-8 w-8 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3"/></svg>
+                      </div>
+                      <p id="camTitle" class="mt-4 text-sm font-medium text-slate-300">Bật camera hoặc tải ảnh bài thi có đồ thị</p>
+                      <p id="camHint" class="mt-1 text-xs text-slate-500">AI sẽ định vị hệ trục Oxy và khoanh vùng lỗi</p>
+                    </div>
+                  </div>
+                </div>
+                <input id="camFile" type="file" accept="image/*" class="sr-only" />
+                <div class="flex flex-wrap gap-2 border-t border-slate-200 p-4">
+                  <button id="camStart" class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:-translate-y-px hover:shadow">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3"/></svg>
+                    <span id="camStartLabel">Bật camera</span>
+                  </button>
+                  <button id="camUploadBtn" class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:-translate-y-px hover:shadow">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                    Tải ảnh bài thi
+                  </button>
+                  <button id="camGrade" class="ml-auto inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 px-4 py-2 text-sm font-semibold text-white shadow-lift transition hover:-translate-y-px hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg>
+                    Quét &amp; Chấm điểm
+                  </button>
+                </div>
+              </div>
+
+              <!-- result -->
+              <div class="flex flex-col gap-4">
+                <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+                  <div class="flex items-center justify-between">
+                    <span class="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                      <svg class="h-4 w-4 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"/><path d="M15.5 13.5 17 22l-5-3-5 3 1.5-8.5"/></svg>
+                      Kết quả chấm AI
+                    </span>
+                    <span id="scoreVerdict" class="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">Chờ quét</span>
+                  </div>
+                  <div class="mt-3 flex items-end gap-2">
+                    <span id="scoreVal" class="text-4xl font-extrabold tracking-tight text-slate-300">—</span>
+                    <span class="pb-1 text-sm font-medium text-slate-400">/ <span id="scoreMax">1.00</span> điểm</span>
+                  </div>
+                  <div class="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                    <div id="scoreBar" class="h-full w-0 rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 transition-all duration-500"></div>
+                  </div>
+                  <p id="scoreNote" class="mt-2 hidden text-xs leading-relaxed text-slate-500"></p>
+                </div>
+
+                <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+                  <h3 id="criteriaHeading" class="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Tiêu chí theo barem</h3>
+                  <ul id="criteriaList" class="flex flex-col gap-2.5">
+                    <li class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2.5 text-sm"><span class="text-slate-600">1. Khảo sát &amp; bảng biến thiên</span><span class="font-mono text-xs font-medium text-slate-400">0.25đ</span></li>
+                    <li class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2.5 text-sm"><span class="text-slate-600">2. Trục tọa độ &amp; điểm đặc biệt</span><span class="font-mono text-xs font-medium text-slate-400">0.25đ</span></li>
+                    <li class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2.5 text-sm"><span class="text-slate-600">3. Đường tiệm cận đứng &amp; ngang</span><span class="font-mono text-xs font-medium text-slate-400">0.25đ</span></li>
+                    <li class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2.5 text-sm"><span class="text-slate-600">4. Hình dáng đường cong &amp; lồi lõm</span><span class="font-mono text-xs font-medium text-slate-400">0.25đ</span></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========= TAB 3: SNAP TO LATEX ========= -->
+        <section id="tab-latex" class="tab-panel" role="tabpanel" aria-label="Snap to LaTeX">
+          <div class="mx-auto max-w-6xl">
+            <div class="mb-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+              <div class="flex flex-wrap items-start justify-between gap-5">
+                <div class="max-w-xl">
+                  <p class="text-xs font-semibold uppercase tracking-wider text-blue-600">Phase 4 · OCR to LaTeX Engine</p>
+                  <h2 class="mt-2 text-2xl font-bold text-slate-900">Snap to LaTeX: số hóa &amp; trích xuất công thức toán học</h2>
+                  <p class="mt-2 text-sm leading-relaxed text-slate-500">Chụp ảnh tài liệu, kéo thả ảnh bài giảng hoặc dán (Ctrl + V) ảnh công thức viết tay. AI chuyển hóa thành mã LaTeX chuẩn và render sắc nét.</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <button id="latexPaste" class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:-translate-y-px hover:shadow">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v5h5"/></svg>
+                    Dán Clipboard
+                  </button>
+                  <button id="latexPick" class="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-cyan-500 px-3.5 py-2 text-sm font-semibold text-white shadow-lift transition hover:-translate-y-px hover:brightness-105">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3"/></svg>
+                    Chụp / Chọn ảnh
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+              <!-- dropzone -->
+              <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+                <div class="mb-3 flex items-center justify-between">
+                  <h3 class="text-sm font-semibold text-slate-900">Vùng quét tài liệu</h3>
+                  <span class="rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600 ring-1 ring-emerald-100">99.8% Tự tin</span>
+                </div>
+
+                <label id="dropzone" class="dropzone group flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/50 px-6 py-14 text-center">
+                  <input id="fileInput" type="file" accept="image/*" class="sr-only" />
+                  <div class="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-lift transition group-hover:scale-105">
+                    <svg class="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5-5 5 5M12 5v12"/></svg>
+                  </div>
+                  <p id="dropLabel" class="mt-4 text-sm font-semibold text-slate-800">Kéo &amp; thả ảnh vào đây</p>
+                  <p class="mt-1 text-xs text-slate-500">hoặc <span class="font-medium text-blue-600">bấm để chọn tệp</span> · JPG, PNG, WEBP, HEIC tối đa 25MB</p>
+                </label>
+
+                <div class="mt-4 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                  <p class="mb-2 text-xs font-semibold text-slate-500">Bộ lọc tiền xử lý ảnh</p>
+                  <div class="flex flex-wrap gap-2">
+                    <span class="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200">Khử bóng mờ</span>
+                    <span class="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200">Nắn nếp gấp</span>
+                    <span class="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200">Tăng tương phản</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- result split -->
+              <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+                <div class="mb-3 flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+                  <button class="latex-view is-on flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition">Song song</button>
+                  <button class="latex-view flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition">Render</button>
+                  <button class="latex-view flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition">Mã gốc</button>
+                </div>
+
+                <!-- render -->
+                <div class="rounded-xl border border-slate-200 bg-slate-50/50 p-5">
+                  <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Render KaTeX</p>
+                  <div id="latexRender" class="grid min-h-[6rem] place-items-center overflow-x-auto rounded-lg bg-white p-4 text-center text-lg text-slate-800 ring-1 ring-slate-100">
+                    <span class="text-sm text-slate-400">Tải / dán / chụp ảnh công thức để render</span>
+                  </div>
+                </div>
+
+                <!-- code -->
+                <div class="mt-4 overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+                  <div class="flex items-center justify-between border-b border-slate-800 px-4 py-2">
+                    <span class="font-mono text-xs text-slate-400">latex.tex</span>
+                    <button id="copyLatex" class="inline-flex items-center gap-1.5 rounded-md bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-200 transition hover:bg-slate-700">
+                      <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                      <span id="copyLabel">Copy</span>
+                    </button>
+                  </div>
+                  <pre class="scroll-slim overflow-x-auto p-4 font-mono text-[13px] leading-relaxed text-cyan-300"><code id="latexCode">\int_{0}^{\frac{\pi}{2}} \frac{\sin x}{\sin x+\cos x}\,dx</code></pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- Mobile sidebar backdrop -->
+  <div id="mobileBackdrop" class="fixed inset-0 hidden bg-slate-900/40 backdrop-blur-sm lg:hidden" style="z-index: var(--z-backdrop)"></div>
+
+  <!-- Three.js (ES modules via importmap) -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script src="app.js"></script>
+  <script src="grader.js"></script>
+  <script src="latex.js"></script>
+  <script type="module" src="geometry3d.js"></script>
+  <!-- Shared component styles that depend on Tailwind classes -->
+  <style>
+    /* Active nav state */
+    .nav-link { color: #475569; }
+    .nav-link .nav-icon { background: #f1f5f9; color: #64748b; }
+    .nav-link:hover { background: rgba(241,245,249,0.7); color: #0f172a; }
+    .nav-link.is-active {
+      background: linear-gradient(90deg, rgba(37,99,235,0.08), rgba(6,182,212,0.06));
+      color: #1d4ed8;
+      box-shadow: inset 0 0 0 1px rgba(37,99,235,0.12);
+    }
+    .nav-link.is-active .nav-icon { background: linear-gradient(135deg,#2563eb,#06b6d4); color: #fff; }
+    .nav-link.is-active .nav-sub { color: #60a5fa; }
+
+    /* Layer toggle pills */
+    .layer-toggle, .quick-angle, .problem-chip, .latex-view {
+      font-size: 12px; font-weight: 600; transition: all .18s ease; cursor: pointer;
+    }
+    .layer-toggle, .quick-angle, .problem-chip {
+      border-radius: 9px; padding: 6px 12px;
+      border: 1px solid #e2e8f0; background: #fff; color: #64748b;
+    }
+    .layer-toggle:hover, .quick-angle:hover, .problem-chip:hover {
+      border-color: #cbd5e1; color: #0f172a; transform: translateY(-1px);
+    }
+    .layer-toggle.is-on, .problem-chip.is-on {
+      background: linear-gradient(135deg,#2563eb,#06b6d4); color: #fff; border-color: transparent;
+      box-shadow: 0 6px 16px -6px rgba(37,99,235,0.5);
+    }
+    .quick-angle.is-on { border-color: #2563eb; color: #1d4ed8; background: #eff6ff; }
+
+    .latex-view { color: #64748b; }
+    .latex-view.is-on { background: #fff; color: #1d4ed8; box-shadow: 0 1px 3px rgba(15,23,42,0.08); }
+
+    .grade-mode { color: #64748b; cursor: pointer; transition: all .18s ease; }
+    .grade-mode.is-on { background: #fff; color: #1d4ed8; box-shadow: 0 1px 3px rgba(15,23,42,0.08); }
+
+    .step-item { border-color: #f1f5f9; }
+  </style>
+</body>
+</html>

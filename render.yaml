@@ -1,0 +1,11 @@
+# Deploy MathVision PRO lên Render.com (Docker). Xem DEPLOY.md.
+services:
+  - type: web
+    name: mathvision
+    runtime: docker
+    plan: free
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false            # nhập thủ công trong dashboard (bí mật)
+      - key: GEMINI_MODEL
+        value: gemini-flash-lite-latest
