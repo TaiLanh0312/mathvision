@@ -65,6 +65,7 @@ class OcrRequest(BaseModel):
 
 class SolveRequest(BaseModel):
     problem: str
+    points: dict | None = None   # {tên: [x,y,z]} các điểm đã có trong hình
 
 
 @app.get("/api/health")
@@ -143,7 +144,7 @@ async def solve(req: SolveRequest):
     if not problem:
         return JSONResponse({"error": "Đề bài trống."}, status_code=400)
     try:
-        result = solve_detailed(problem)
+        result = solve_detailed(problem, req.points)
         if result is None:
             result = mock_solve(problem); result["source"] = "mock"
         else:

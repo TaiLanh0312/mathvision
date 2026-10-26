@@ -321,6 +321,9 @@ function buildStepGroup(st, P, labelOffsets) {
   (st.dashedEdges || []).forEach(([p, q]) => {
     if (P[p] && P[q]) g.add(makeLine([vg(p), vg(q)], { color: col, width: 2.5, dashed: true }));
   });
+  // đường cong (mặt tròn xoay): mảng polyline toạ độ thô
+  (st.curves || []).forEach((cv) => { if (cv && cv.length >= 2) g.add(makeLine(cv.map(toVec), { color: col, width: structural ? 2.8 : 2.4 })); });
+  (st.curvesDashed || []).forEach((cv) => { if (cv && cv.length >= 2) g.add(makeLine(cv.map(toVec), { color: col, width: 2.2, dashed: true })); });
   (st.angles || []).forEach((an) => {
     if (!(P[an.at] && P[an.from] && P[an.to])) return;
     const c = vg(an.at);
@@ -529,7 +532,11 @@ function frameCamera(P) {
   const center = box.getCenter(new THREE.Vector3());
   const radius = box.getSize(new THREE.Vector3()).length() * 0.5 || 3;
   currentSpec._center = center; currentSpec._radius = radius;
-  tweenCamera(center.clone().add(new THREE.Vector3(radius*1.9, radius*1.5, radius*2.1)), center);
+  const flat = !!currentSpec.dim2d;
+  if (controls) controls.enableRotate = !flat;              // 2D: khoá xoay
+  const off = flat ? new THREE.Vector3(0.001, radius*3.4, 0.001)   // nhìn từ trên
+                   : new THREE.Vector3(radius*1.9, radius*1.5, radius*2.1);
+  tweenCamera(center.clone().add(off), center);
 }
 const VIEW_OFFSETS = {
   'Chuẩn': (r) => new THREE.Vector3(r*1.9, r*1.5, r*2.1),
@@ -647,20 +654,53 @@ async function parseAndBuild() {
 }
 
 async function fetchDetailedSolution(problem) {
-  const el = document.getElementById('solutionList'); if (!el) return;
-  const fallback = (currentSpec && currentSpec.steps) || [];
+  const el = document.getElementById('solutionList'); if (!el || !currentSpec) return;
+  const baseSpec = currentSpec;
+  const figureConstr = (baseSpec.construction && baseSpec.construction.length)
+    ? baseSpec.construction : deriveConstruction(baseSpec);
+  const fallback = baseSpec.steps || [];
   el.innerHTML = '<li class="animate-pulse text-xs text-slate-400">Đang soạn lời giải chi tiết…</li>';
   try {
     const res = await fetch(`${API_BASE}/api/geometry/solve`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ problem }),
+      body: JSON.stringify({ problem, points: baseSpec.points }),
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const d = await res.json();
     if (d.error) throw new Error(d.error);
-    const items = (d.solution || []).slice();
-    if (d.answer) items.push({ title: 'Đáp số', body: d.answer });
-    renderSolution(items.length ? items : fallback);
+
+    const sol = d.solution || [];
+    const newPoints = {}, newLabels = {}, drawSteps = [], solMeta = [];
+    sol.forEach((st) => {
+      const dr = st.draw || {};
+      Object.assign(newPoints, dr.points || {});
+      Object.assign(newLabels, dr.labels || {});
+      const drawn = [['points', 'o'], ['segments', 'a'], ['dashed', 'a']]
+        .some(([k]) => dr[k] && (Array.isArray(dr[k]) ? dr[k].length : Object.keys(dr[k]).length));
+      if (drawn) {
+        drawSteps.push({
+          title: st.title || 'Vẽ thêm', body: st.body || '', color: 'emerald',
+          points: Object.keys(dr.points || {}), solidEdges: dr.segments || [], dashedEdges: dr.dashed || [],
+        });
+        solMeta.push({ title: st.title, body: st.body, stepIndex: figureConstr.length + drawSteps.length - 1 });
+      } else {
+        solMeta.push({ title: st.title, body: st.body, stepIndex: null });
+      }
+    });
+    if (d.answer) solMeta.push({ title: 'Đáp số', body: d.answer, stepIndex: null });
+
+    if (drawSteps.length) {
+      buildFromSpec({
+        ...baseSpec,
+        points: { ...baseSpec.points, ...newPoints },
+        labels: { ...(baseSpec.labels || {}), ...newLabels },
+        construction: [...figureConstr, ...drawSteps],
+        steps: solMeta.map((m) => ({ title: m.title, body: m.body })),
+      });
+    } else {
+      renderSolution(solMeta.length ? solMeta.map((m) => ({ title: m.title, body: m.body })) : fallback);
+    }
+    wireSolutionClicks(solMeta);
   } catch (e) {
     renderSolution(fallback);
     const note = document.createElement('li');
@@ -668,6 +708,17 @@ async function fetchDetailedSolution(problem) {
     note.textContent = 'Lời giải chi tiết cần backend + GEMINI_API_KEY (' + e.message + ').';
     el.appendChild(note);
   }
+}
+function wireSolutionClicks(solMeta) {
+  const el = document.getElementById('solutionList'); if (!el) return;
+  [...el.children].forEach((li, i) => {
+    const m = solMeta[i]; if (!m) return;
+    if (m.stepIndex != null) {
+      li.classList.add('cursor-pointer', 'ring-1', 'ring-emerald-200');
+      li.title = 'Bấm để xem phần vẽ thêm của bước này trên hình';
+      li.addEventListener('click', () => setStep(m.stepIndex));
+    }
+  });
 }
 
 function busy(on) {

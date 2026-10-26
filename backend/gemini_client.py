@@ -125,5 +125,6 @@ def _text_json(system: str, user: str, max_tokens: int = 4096) -> dict | None:
     return _extract_json(resp.text)
 
 
-def solve_detailed(problem: str) -> dict | None:
-    return _text_json(SOLVE_SYSTEM, SOLVE_USER.format(problem=problem))
+def solve_detailed(problem: str, points: dict | None = None) -> dict | None:
+    pts = json.dumps(points or {}, ensure_ascii=False)
+    return _text_json(SOLVE_SYSTEM, SOLVE_USER.format(problem=problem, points=pts))

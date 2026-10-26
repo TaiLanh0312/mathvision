@@ -98,6 +98,24 @@ function regTriPyramid(a, lateralExpr) {
     title: 'Chóp đều S.ABC', meta: 'Oxyz [O = tâm đáy]',
   };
 }
+function tetrahedron(a) {
+  // Tứ diện đều ABCD: đáy ABC đều, D trên tâm O, mọi cạnh = a.
+  const r = a / Math.sqrt(3);
+  const ang = (k) => Math.PI / 2 + k * 2 * Math.PI / 3;
+  const baseK = (k) => [r * Math.cos(ang(k)), r * Math.sin(ang(k)), 0];
+  const A = baseK(0), B = baseK(1), C = baseK(2);
+  const h = a * Math.sqrt(2 / 3);
+  const D = [0, 0, h], O = [0, 0, 0];
+  return {
+    kind: 'tetrahedron', points: { A, B, C, D, O }, apex: 'D', footOfApex: 'O',
+    base: ['A', 'B', 'C'],
+    solidEdges: [['A', 'B'], ['B', 'C'], ['D', 'A'], ['D', 'B'], ['D', 'C']],
+    dashedEdges: [['C', 'A']],
+    faces: [['A', 'B', 'C']],
+    labels: { A: [0.05, 0.3, -0.05], B: [-0.32, -0.14, 0], C: [0.32, -0.14, 0], D: [0, 0.32, 0.05] },
+    title: 'Tứ diện đều ABCD', meta: 'Oxyz [O = tâm đáy]',
+  };
+}
 function saPerpTriPyramid(a, saExpr, legLen, baseKind) {
   // Chóp S.ABC, SA ⊥ đáy. baseKind: 'right-iso-B' (vuông cân tại B) | 'right-B'.
   const L = legLen || 2 * a;
@@ -312,6 +330,143 @@ function formatDeg(d) {
 /* ============================================================
    PARSER đề bài
    ============================================================ */
+/* đường tròn (polyline) trong mặt phẳng span bởi u,v quanh tâm c, bán kính R */
+function circle(c, R, u, v, n = 48) {
+  const pts = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n * 2 * Math.PI, co = Math.cos(t), si = Math.sin(t);
+    pts.push([c[0] + R*(u[0]*co + v[0]*si), c[1] + R*(u[1]*co + v[1]*si), c[2] + R*(u[2]*co + v[2]*si)]);
+  }
+  return pts;
+}
+const EX = [1,0,0], EY = [0,1,0], EZ = [0,0,1];
+
+function regQuadPyramid(a, hExpr) {
+  // Chóp tứ giác đều S.ABCD: đáy vuông tâm O, S trên O.
+  const s = a / 2, h = lengthToNum(hExpr, a) || a * 1.2;
+  const P = { A:[-s,-s,0], B:[s,-s,0], C:[s,s,0], D:[-s,s,0], S:[0,0,h], O:[0,0,0] };
+  return {
+    kind: 'reg-quad-pyramid', points: P, apex: 'S', footOfApex: 'O', base: ['A','B','C','D'],
+    solidEdges: [['A','B'],['B','C'],['S','A'],['S','B'],['S','C']],
+    dashedEdges: [['C','D'],['D','A'],['S','D']],
+    faces: [['A','B','C','D']],
+    labels: { A:[-0.28,-0.1,-0.28], B:[0.28,-0.1,-0.28], C:[0.28,-0.1,0.28], D:[-0.25,-0.1,0.28], S:[0,0.3,0], O:[0.14,-0.12,0.1] },
+    title: 'Chóp tứ giác đều S.ABCD', meta: 'Oxyz [O = tâm đáy]',
+  };
+}
+function rhombusPyramid(a, hExpr, saPerp) {
+  // Chóp đáy hình thoi ABCD (chéo AC, BD), S trên O hoặc SA⊥ đáy.
+  const p = a * 0.82, q = a * 0.57, h = lengthToNum(hExpr, a) || a * 1.2;
+  const P = { A:[-p,0,0], B:[0,-q,0], C:[p,0,0], D:[0,q,0], O:[0,0,0] };
+  P.S = saPerp ? [P.A[0], P.A[1], h] : [0,0,h];
+  return {
+    kind: 'rhombus-pyramid', points: P, apex: 'S', footOfApex: saPerp ? 'A' : 'O', base: ['A','B','C','D'],
+    solidEdges: [['A','B'],['B','C'],['S','A'],['S','B'],['S','C']],
+    dashedEdges: [['C','D'],['D','A'],['S','D']],
+    faces: [['A','B','C','D']],
+    labels: { A:[-0.3,-0.05,0], B:[0,-0.32,0], C:[0.3,-0.05,0], D:[0,0.3,0], S:[0,0.3,0.05], O:[0.14,0.12,0.1] },
+    title: 'Chóp đáy hình thoi S.ABCD', meta: 'Oxyz [O = tâm đáy]',
+  };
+}
+function hexPrism(a, hExpr) {
+  // Lăng trụ lục giác đều ABCDEF.A'...F'
+  const h = lengthToNum(hExpr, a) || a * 1.6;
+  const nm = ['A','B','C','D','E','F'];
+  const P = {};
+  nm.forEach((n, k) => { const t = k * Math.PI / 3; P[n] = [a*Math.cos(t), a*Math.sin(t), 0]; P[n + "'"] = [a*Math.cos(t), a*Math.sin(t), h]; });
+  const solid = [], dashed = [], labels = {};
+  nm.forEach((n, k) => {
+    const nx = nm[(k+1)%6];
+    const backSet = ['C','D','E'];
+    (backSet.includes(n) && backSet.includes(nx) ? dashed : solid).push([n, nx]);
+    (backSet.includes(n) && backSet.includes(nx) ? dashed : solid).push([n+"'", nx+"'"]);
+    (backSet.includes(n) ? dashed : solid).push([n, n+"'"]);
+    labels[n] = [0.1*Math.cos(k*Math.PI/3), -0.1, 0.1*Math.sin(k*Math.PI/3)];
+    labels[n+"'"] = [0.1*Math.cos(k*Math.PI/3), 0.2, 0.1*Math.sin(k*Math.PI/3)];
+  });
+  return {
+    kind: 'hex-prism', points: P, base: nm.slice(), top: nm.map((n)=>n+"'"),
+    solidEdges: solid, dashedEdges: dashed,
+    faces: [nm.slice(), nm.map((n)=>n+"'")], labels,
+    title: 'Lăng trụ lục giác đều', meta: 'Oxyz',
+  };
+}
+function cone(a, hExpr) {
+  const R = a, h = lengthToNum(hExpr, a) || a * 1.7;
+  const P = { O:[0,0,0], S:[0,0,h], A:[R,0,0], B:[-R,0,0] };
+  return {
+    kind: 'cone', points: P, apex: 'S', footOfApex: 'O', base: [],
+    solidEdges: [['S','A'],['S','B']], dashedEdges: [['S','O'],['O','A']],
+    faces: [],
+    curves: [circle([0,0,0], R, EX, EY)],
+    labels: { O:[0.1,-0.12,0.1], S:[0,0.3,0], A:[0.2,-0.1,0], B:[-0.2,-0.1,0] },
+    title: 'Hình nón', meta: 'Oxyz [O = tâm đáy]',
+  };
+}
+function cylinder(a, hExpr) {
+  const R = a, h = lengthToNum(hExpr, a) || a * 1.8;
+  const P = { O:[0,0,0], "O'":[0,0,h], A:[R,0,0], "A'":[R,0,h], B:[-R,0,0], "B'":[-R,0,h] };
+  return {
+    kind: 'cylinder', points: P, base: [], top: [],
+    solidEdges: [['A',"A'"],['B',"B'"]], dashedEdges: [['O',"O'"]],
+    faces: [],
+    curves: [circle([0,0,h], R, EX, EY)], curvesDashed: [circle([0,0,0], R, EX, EY)],
+    labels: { O:[0.12,-0.12,0], "O'":[0.12,0.2,0], A:[0.18,-0.1,0], "A'":[0.18,0.15,0] },
+    title: 'Hình trụ', meta: 'Oxyz',
+  };
+}
+function sphere(a) {
+  const R = a;
+  const P = { O:[0,0,0], A:[R,0,0] };
+  return {
+    kind: 'sphere', points: P, base: [],
+    solidEdges: [], dashedEdges: [['O','A']], faces: [],
+    curves: [circle([0,0,0], R, EX, EZ)],           // đường viền (đứng)
+    curvesDashed: [circle([0,0,0], R, EX, EY)],       // xích đạo (ngang)
+    labels: { O:[0.12,0.14,0.1], A:[0.18,-0.1,0] },
+    title: 'Mặt cầu', meta: 'Oxyz [O = tâm, R = bán kính]',
+  };
+}
+
+/* ===== HÌNH PHẲNG 2D (cấp 2) — dựng ở mặt z=0, nhìn từ trên ===== */
+function tri2d(a, kind) {
+  let A, B, C, title = 'Tam giác ABC';
+  if (kind === 'deu') { A = [0, a*0.866, 0]; B = [-a/2, -a*0.289, 0]; C = [a/2, -a*0.289, 0]; title += ' đều'; }
+  else if (kind === 'vuong') { A = [0, 0, 0]; B = [a*1.3, 0, 0]; C = [0, a, 0]; title += ' vuông tại A'; }
+  else if (kind === 'can') { A = [0, a, 0]; B = [-a*0.7, 0, 0]; C = [a*0.7, 0, 0]; title += ' cân tại A'; }
+  else { A = [-a*0.2, a, 0]; B = [-a*0.8, 0, 0]; C = [a*1.1, 0, 0]; }
+  return {
+    kind: 'tri2d', dim2d: true, points: { A, B, C }, base: ['A','B','C'],
+    solidEdges: [['A','B'],['B','C'],['C','A']], dashedEdges: [], faces: [['A','B','C']],
+    labels: { A: [0, 0.32, 0], B: [-0.3, -0.26, 0], C: [0.3, -0.26, 0] },
+    title, meta: 'Mặt phẳng Oxy',
+    rightAngleAt: kind === 'vuong' ? { at: 'A', from: 'B', to: 'C' } : null,
+  };
+}
+function circle2d(a) {
+  return {
+    kind: 'circle2d', dim2d: true, points: { O: [0,0,0], A: [a,0,0] }, base: [],
+    solidEdges: [], dashedEdges: [['O','A']], faces: [],
+    curves: [circle([0,0,0], a, EX, EY)],
+    labels: { O: [-0.22,-0.14,0], A: [0.2,-0.1,0] },
+    title: 'Đường tròn (O; R)', meta: 'Mặt phẳng Oxy',
+  };
+}
+function quad2d(a, type) {
+  let P, title = 'Tứ giác ABCD';
+  if (type === 'square') { P = { A:[0,0,0], B:[a,0,0], C:[a,a,0], D:[0,a,0] }; title = 'Hình vuông ABCD'; }
+  else if (type === 'rect') { P = { A:[0,0,0], B:[a*1.5,0,0], C:[a*1.5,a,0], D:[0,a,0] }; title = 'Hình chữ nhật ABCD'; }
+  else if (type === 'para') { P = { A:[0,0,0], B:[a*1.3,0,0], C:[a*1.3+a*0.45,a*0.85,0], D:[a*0.45,a*0.85,0] }; title = 'Hình bình hành ABCD'; }
+  else if (type === 'trap') { P = { A:[0,0,0], B:[a*1.7,0,0], C:[a*1.25,a*0.9,0], D:[a*0.4,a*0.9,0] }; title = 'Hình thang ABCD'; }
+  else { P = { A:[-a*0.85,0,0], B:[0,-a*0.6,0], C:[a*0.85,0,0], D:[0,a*0.6,0] }; title = 'Hình thoi ABCD'; }
+  return {
+    kind: 'quad2d', dim2d: true, points: P, base: ['A','B','C','D'],
+    solidEdges: [['A','B'],['B','C'],['C','D'],['D','A']], dashedEdges: [], faces: [['A','B','C','D']],
+    labels: { A:[-0.26,-0.22,0], B:[0.26,-0.22,0], C:[0.26,0.26,0], D:[-0.26,0.26,0] },
+    title, meta: 'Mặt phẳng Oxy',
+  };
+}
+
 /* Chuẩn hoá chuỗi dán vào: LaTeX -> text thuần để parser đọc được. */
 function normalizeText(src) {
   let t = String(src);
@@ -338,12 +493,14 @@ function parseDerivedPoints(t, F) {
   const added = {};
   const hints = {};
   // Trung điểm: "M, N, P (lần lượt) là trung điểm của các cạnh AB, BC, CC'"
-  const namesM = t.match(new RegExp(`(${_N}(?:\\s*,\\s*${_N})*)\\s+l[aầ]n\\s*l[uượ]+t`, 'i'))
-              || t.match(new RegExp(`G[oọ]i\\s+(${_N}(?:\\s*,\\s*${_N})*)\\b`, 'i'));
-  const segM = t.match(new RegExp(`trung\\s*đi[eể]m[^A-Za-z]*(?:c[uủ]a\\s+)?(?:c[aá]c\\s+)?(?:c[aạ]nh\\s+)?((?:${_N}${_N})(?:\\s*,\\s*${_N}${_N})*)`, 'i'));
+  const SEP = '\\s*(?:,|v[aà])\\s*';
+  const namesM = t.match(new RegExp(`(${_N}(?:${SEP}${_N})*)\\s+l[aầ]n\\s*l[uượ]+t`, 'i'))
+              || t.match(new RegExp(`G[oọ]i\\s+(${_N}(?:${SEP}${_N})*)\\b`, 'i'));
+  const segM = t.match(new RegExp(`trung\\s*đi[eể]m[^A-Za-z]*(?:c[uủ]a\\s+)?(?:c[aá]c\\s+)?(?:c[aạ]nh\\s+)?((?:${_N}${_N})(?:${SEP}${_N}${_N})*)`, 'i'));
   if (namesM && segM) {
-    const names = namesM[1].split(',').map((s) => s.trim());
-    const segs = segM[1].split(',').map((s) => s.trim());
+    const SPL = /\s*(?:,|v[aà])\s*/i;
+    const names = namesM[1].split(SPL).map((s) => s.trim()).filter(Boolean);
+    const segs = segM[1].split(SPL).map((s) => s.trim()).filter(Boolean);
     for (let i = 0; i < Math.min(names.length, segs.length); i++) {
       const [x, y] = splitName(segs[i]);
       if (P[x] && P[y]) { P[names[i]] = mid(P[x], P[y]); added[names[i]] = P[names[i]]; hints[names[i]] = `Trung điểm của ${segs[i]}.`; }
@@ -383,9 +540,32 @@ function detectFigure(t) {
   const aMatch = s.match(/cạnh(?:\s*đáy)?\s*(?:bằng|là|=)?\s*([0-9]*a(?:√\d+)?)/);
   const a = A_UNIT;
 
+  // ===== 2D (cấp 2): hình phẳng, KHÔNG có ngữ cảnh không gian =====
+  const is3D = /ch[oó]p|l[aă]ng\s*tr[uụ]|t[uứ]\s*di[eệ]n|h[oộ]p|l[aậ]p\s*ph[uươ]ng|h[iì]nh\s*n[oó]n|h[iì]nh\s*tr[uụ]|h[iì]nh\s*c[aầ]u|m[aặ]t\s*ph[aẳ]ng|kh[oô]ng\s*gian|đ[uư]ờng\s*cao\s*s[a-d]/.test(s);
+  if (!is3D) {
+    if (/tam\s*giác/.test(s)) {
+      const kind = /đều/.test(s) ? 'deu' : /vu[oô]ng/.test(s) ? 'vuong' : /c[aâ]n/.test(s) ? 'can' : 'thuong';
+      return tri2d(a, kind);
+    }
+    if (/đường\s*tr[oò]n/.test(s)) return circle2d(a);
+    if (/h[iì]nh\s*vu[oô]ng/.test(s)) return quad2d(a, 'square');
+    if (/(?:h[iì]nh\s*)?ch[uữ]\s*nh[aậ]t/.test(s)) return quad2d(a, 'rect');
+    if (/b[iì]nh\s*h[aà]nh/.test(s)) return quad2d(a, 'para');
+    if (/h[iì]nh\s*thang/.test(s)) return quad2d(a, 'trap');
+    if (/h[iì]nh\s*thoi/.test(s)) return quad2d(a, 'rhombus');
+  }
+
+  const hCommon = s.match(/(?:chiều\s*cao|đường\s*cao|cao)\s*(?:bằng|là|=)?\s*([0-9]*a(?:√\d+)?|[0-9.]+)/);
+  const hE = hCommon ? hCommon[1] : null;
+  // mặt tròn xoay
+  if (/h[iì]nh\s*n[oó]n|kh[oố]i\s*n[oó]n|n[oó]n\s*(?:tr[oò]n|c[uụ]t)?/.test(s)) return cone(a, hE);
+  if (/h[iì]nh\s*tr[uụ]|kh[oố]i\s*tr[uụ]|tr[uụ]\s*tr[oò]n/.test(s)) return cylinder(a, hE);
+  if (/h[iì]nh\s*c[aầ]u|kh[oố]i\s*c[aầ]u|m[aặ]t\s*c[aầ]u/.test(s)) return sphere(a);
+
   if (/lập\s*phương/.test(s)) return cube(a);
   if (/hộp\s*(?:chữ\s*nhật)?/.test(s)) return box(a, a*0.7, a*1.1);
   if (/lăng\s*trụ/.test(s)) {
+    if (/l[uụ]c\s*giác/.test(s)) return hexPrism(a, hE);
     // Lăng trụ XIÊN: hình chiếu của A'/đỉnh trên xuống tâm/trọng tâm/tâm ngoại tiếp.
     const oblique = /h[iì]nh\s*chi[eế]u[^.]*?(t[aâ]m|tr[oọ]ng\s*t[aâ]m|ngo[aạ]i\s*ti[eế]p)/.test(s)
                  || /chi[eế]u[^.]*?\btr[uù]ng[^.]*?\bo\b/.test(s);
@@ -396,6 +576,7 @@ function detectFigure(t) {
     const hM = s.match(/(?:chiều\s*cao|cạnh\s*bên)\s*(?:bằng|là|=)?\s*([0-9]*a(?:√\d+)?|[0-9.]+)/);
     return triPrism(a, hM ? hM[1] : '1.3a');
   }
+  if (/t[uứ]\s*di[eệ]n/.test(s)) return tetrahedron(a);
   if (/s\.abc\b/.test(s) || (/tam\s*giác/.test(s) && /chóp/.test(s))) {
     // Chóp S.ABC có SA ⊥ đáy + đáy vuông (cân) tại B -> builder SA⊥.
     const saPerp = /s\s*a\s*(?:vuông\s*góc|⊥)/.test(s) || /(?:vuông\s*góc|⊥)[^.]*\(abc\)/.test(s);
@@ -411,6 +592,8 @@ function detectFigure(t) {
   if (/chóp|s\.abcd/.test(s)) {
     const hM = s.match(/s\s*a?\s*(?:=|bằng)\s*([0-9]*a(?:√\d+)?)/) || s.match(/đường\s*cao\s*(?:=|bằng)?\s*([0-9]*a(?:√\d+)?)/);
     const hExpr = hM ? hM[1] : 'a√2';
+    if (/thoi/.test(s)) return rhombusPyramid(a, hExpr, /s\s*a\s*(?:vuông\s*góc|⊥)/.test(s));
+    if (/t[uứ]\s*giác\s*đều/.test(s) || /ch[oó]p\s*đều/.test(s)) return regQuadPyramid(a, hExpr);
     if (/chữ\s*nhật/.test(s)) return rectPyramid(a, a*0.65, hExpr);
     return squarePyramid(a, hExpr); // mặc định đáy vuông
   }
@@ -562,9 +745,13 @@ export function solveProblem(text) {
   const topNames = Object.keys(F.points).filter((n) => !baseNames.includes(n));
   const construction = [];
   construction.push({
-    title: `Dựng đáy ${baseNames.join('')}`, body: 'Gắn hệ trục Oxyz và dựng đa giác đáy.', color: 'solid',
+    title: F.dim2d ? `Dựng hình ${baseNames.join('') || ''}`.trim()
+         : (baseNames.length ? `Dựng đáy ${baseNames.join('')}` : 'Dựng đáy / mặt cong'),
+    body: F.dim2d ? 'Dựng hình trên mặt phẳng Oxy.' : 'Gắn hệ trục Oxyz và dựng đáy.', color: 'solid',
     points: baseNames, solidEdges: F.solidEdges.filter(inBaseEdge), dashedEdges: F.dashedEdges.filter(inBaseEdge),
     faces: F.faces.filter((f) => f.every((n) => baseNames.includes(n))),
+    curves: F.curves || [], curvesDashed: F.curvesDashed || [],
+    rightAngles: F.rightAngleAt ? [F.rightAngleAt] : [],
   });
   construction.push({
     title: F.top ? 'Dựng mặt trên & cạnh bên' : 'Dựng đỉnh & cạnh bên',
@@ -583,10 +770,15 @@ export function solveProblem(text) {
     dashedEdges: L.dashedEdges, angles: L.angles, rightAngles: L.rightAngles,
   }));
 
+  const hasContent = (st) => ['points','solidEdges','dashedEdges','faces','curves','curvesDashed','angles','rightAngles']
+    .some((k) => st[k] && st[k].length);
+  const constructionClean = construction.filter(hasContent);
+
   const spec = {
-    title: F.title, meta: F.meta || 'Oxyz',
+    title: F.title, meta: F.meta || 'Oxyz', dim2d: F.dim2d || false,
     points, solidEdges: F.solidEdges, dashedEdges: F.dashedEdges, faces: F.faces,
-    labels, entities, steps, layers, defaultLayers, construction, source: 'kernel',
+    labels, entities, steps, layers, defaultLayers,
+    construction: constructionClean.length ? constructionClean : construction, source: 'kernel',
   };
   return { ok: true, kind: F.kind, spec };
 }

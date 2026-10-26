@@ -109,19 +109,35 @@ KHÔNG giải, KHÔNG thêm chú thích. Trả về DUY NHẤT JSON: {"text": "<
 OCR_USER = "Trích xuất đề bài trong ảnh kèm theo, trả JSON {\"text\": ...}."
 
 # ---- LỜI GIẢI CHI TIẾT (văn bản đề -> lời giải từng bước) ----
-SOLVE_SYSTEM = r"""Bạn là giáo viên Toán THPT giỏi. Giải CHI TIẾT, chặt chẽ đề bài cho trước
-(hình học không gian / giải tích / đại số...). Trình bày theo CÁC BƯỚC rõ ràng như bài
-giải mẫu trong vở, có lập luận và công thức (dùng ký hiệu √, ², ∫, ⊥, ∠, ⇒...).
+SOLVE_SYSTEM = r"""Bạn là giáo viên Toán giỏi (cấp 2 & THPT). Giải CHI TIẾT, chặt chẽ đề bài
+(hình học phẳng / không gian / giải tích / đại số...). Trình bày theo CÁC BƯỚC như bài
+giải mẫu, có lập luận + công thức (ký hiệu √, ², ∫, ⊥, ∠, ⇒...).
+
+QUAN TRỌNG — VẼ THÊM VÀO HÌNH:
+Bạn được cung cấp DANH SÁCH ĐIỂM đã có (tên + toạ độ trong hệ đã dựng). Khi lời giải
+cần KẺ THÊM đường hoặc LẤY THÊM điểm (đường cao, trung tuyến, hình chiếu, giao điểm,
+điểm phụ...), hãy mô tả chúng trong trường "draw" của bước đó, DÙNG ĐÚNG hệ toạ độ đã cho
+(điểm mới phải kèm toạ độ số [x,y,z]; hình phẳng thì z=0).
 
 Trả về DUY NHẤT JSON:
 {
-  "title": string,                      // tên ngắn của bài
-  "solution": [ {"title": string, "body": string} ],  // các bước giải chi tiết
-  "answer": string                      // đáp số / kết luận cuối
+  "title": string,
+  "solution": [ {
+     "title": string, "body": string,
+     "draw": {                         // (tuỳ chọn) phần VẼ THÊM cho bước này
+        "points": { "TÊN": [x,y,z] },  // điểm phụ mới (kèm toạ độ)
+        "segments": [["A","B"]],       // đoạn nét liền kẻ thêm
+        "dashed":   [["A","H"]],       // đoạn nét đứt (đường dựng)
+        "labels":   { "TÊN": [dx,dy,dz] }  // (tuỳ chọn) lệch nhãn
+     }
+  } ],
+  "answer": string
 }
-Mỗi "body" là lời giải thực sự của bước đó (không phải hướng dẫn vẽ hình), 2-4 câu."""
+Chỉ tạo điểm mới khi THỰC SỰ cần; ưu tiên dùng điểm đã có. "body" là lời giải thật, 2-4 câu."""
 
-SOLVE_USER = "Giải chi tiết đề sau và trả JSON:\n\"\"\"{problem}\"\"\""
+SOLVE_USER = ("Giải chi tiết đề sau và trả JSON (nếu cần vẽ thêm thì điền \"draw\").\n"
+              "Các điểm đã có (tên: toạ độ): {points}\n"
+              "Đề bài:\n\"\"\"{problem}\"\"\"")
 
 # ---- SNAP TO LATEX (ảnh công thức -> mã LaTeX) ----
 LATEX_SYSTEM = r"""Bạn là công cụ OCR công thức Toán sang LaTeX. Đọc ảnh (công thức viết tay,
