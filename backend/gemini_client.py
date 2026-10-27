@@ -8,6 +8,7 @@ import os
 import json
 import re
 import unicodedata
+import json5
 
 import base64
 
@@ -44,17 +45,75 @@ def _reasoning_level(problem: str) -> str:
 
 
 def _extract_json(text: str) -> dict:
-    """Gemini đôi khi bọc JSON trong ```fences dù đã dặn."""
+    """Parse strict JSON first, then tolerate common JSON5 formatting mistakes."""
     t = (text or "").strip()
     if t.startswith("```"):
         t = t.split("```", 2)[1]
         if t.lower().startswith("json"):
             t = t[4:]
         t = t.strip()
-    start, end = t.find("{"), t.rfind("}")
-    if start != -1 and end != -1:
-        t = t[start:end + 1]
-    return json.loads(t)
+
+    # Extract one balanced object without mistaking braces inside quoted text.
+    start = t.find("{")
+    if start >= 0:
+        quote = None
+        escaped = False
+        depth = 0
+        end = None
+        for index in range(start, len(t)):
+            char = t[index]
+            if quote:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == quote:
+                    quote = None
+            elif char in ("\"", "'"):
+                quote = char
+            elif char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    end = index + 1
+                    break
+        t = t[start:end] if end is not None else t[start:]
+
+    try:
+        result = json.loads(t)
+    except json.JSONDecodeError as strict_error:
+        try:
+            result = json5.loads(t, allow_duplicate_keys=False)
+        except Exception as tolerant_error:
+            raise ValueError(f"Phản hồi AI không phải JSON hợp lệ: {strict_error}") from tolerant_error
+    if not isinstance(result, dict):
+        raise ValueError("Phản hồi AI phải là một object JSON.")
+    return result
+
+
+def _generate_json_with_retry(client, model: str, contents, config):
+    """Make one fresh-format retry if a model response cannot be parsed."""
+    conversation = list(contents) if isinstance(contents, list) else [
+        types.Content(role="user", parts=[types.Part(text=str(contents))])
+    ]
+    for attempt in range(2):
+        response = client.models.generate_content(model=model, contents=conversation, config=config)
+        raw = response.text or ""
+        try:
+            return _extract_json(raw)
+        except (ValueError, TypeError) as exc:
+            if attempt:
+                raise ValueError(f"AI vẫn trả JSON không đọc được sau khi thử lại: {exc}") from exc
+            conversation.extend([
+                types.Content(role="model", parts=[types.Part(text=raw)]),
+                types.Content(role="user", parts=[types.Part(text=(
+                    "Phản hồi ngay trước bị lỗi định dạng JSON. Hãy tạo lại TOÀN BỘ kết quả, "
+                    "đúng schema đã yêu cầu, chỉ dùng dấu nháy kép cho key và chuỗi, "
+                    "không thêm markdown hay lời dẫn."
+                ))]),
+            ])
+    raise RuntimeError("Không nhận được kết quả JSON.")
 
 
 def parse_geometry(problem: str) -> dict | None:
@@ -71,18 +130,14 @@ def parse_geometry(problem: str) -> dict | None:
         types.Content(role="model", parts=[types.Part(text=ONE_SHOT_JSON)]),
         types.Content(role="user", parts=[types.Part(text=USER_TEMPLATE.format(problem=problem))]),
     ]
-    resp = client.models.generate_content(
-        model=model,
-        contents=contents,
-        config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-            response_mime_type="application/json",
-            temperature=0.15,
-            max_output_tokens=16384,
-            thinking_config=types.ThinkingConfig(thinking_level=_reasoning_level(problem)),
-        ),
+    config = types.GenerateContentConfig(
+        system_instruction=SYSTEM_PROMPT,
+        response_mime_type="application/json",
+        temperature=0.15,
+        max_output_tokens=16384,
+        thinking_config=types.ThinkingConfig(thinking_level=_reasoning_level(problem)),
     )
-    return _extract_json(resp.text)
+    return _generate_json_with_retry(client, model, contents, config)
 
 
 def _vision_json(image_data_url: str, system: str, user: str, max_tokens: int = 4096) -> dict | None:
@@ -101,14 +156,11 @@ def _vision_json(image_data_url: str, system: str, user: str, max_tokens: int = 
         types.Part(text=user),
         types.Part.from_bytes(data=img_bytes, mime_type=mime),
     ])]
-    resp = client.models.generate_content(
-        model=model, contents=contents,
-        config=types.GenerateContentConfig(
-            system_instruction=system, response_mime_type="application/json",
-            temperature=0.2, max_output_tokens=max_tokens,
-        ),
+    config = types.GenerateContentConfig(
+        system_instruction=system, response_mime_type="application/json",
+        temperature=0.2, max_output_tokens=max_tokens,
     )
-    return _extract_json(resp.text)
+    return _generate_json_with_retry(client, model, contents, config)
 
 
 def grade_graph(image_data_url: str, problem: str) -> dict | None:
@@ -134,15 +186,12 @@ def _text_json(system: str, user: str, max_tokens: int = 8192,
         return None
     client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
     model = os.getenv("GEMINI_REASONING_MODEL") or "gemini-3.8-flash"
-    resp = client.models.generate_content(
-        model=model, contents=user,
-        config=types.GenerateContentConfig(
-            system_instruction=system, response_mime_type="application/json",
-            temperature=0.1, max_output_tokens=max_tokens,
-            thinking_config=types.ThinkingConfig(thinking_level=thinking_level),
-        ),
+    config = types.GenerateContentConfig(
+        system_instruction=system, response_mime_type="application/json",
+        temperature=0.1, max_output_tokens=max_tokens,
+        thinking_config=types.ThinkingConfig(thinking_level=thinking_level),
     )
-    return _extract_json(resp.text)
+    return _generate_json_with_retry(client, model, [types.Content(role="user", parts=[types.Part(text=user)])], config)
 
 
 def repair_geometry(problem: str, candidate: dict, errors: list[str]) -> dict | None:

@@ -661,6 +661,31 @@ function setStatus(msg, kind = 'info') {
 }
 function clearStatus() { const el = document.getElementById('buildStatus'); el && el.classList.add('hidden'); }
 
+async function solveWithoutFigure(problem, requestId, sceneError) {
+  renderSolution([{ title: 'Đang thử giải riêng', body: 'AI không dựng được hình ở lượt đầu; đang gửi đề sang luồng giải độc lập.' }]);
+  try {
+    const res = await fetch(`${API_BASE}/api/geometry/solve`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ problem, text_only: true }),
+    });
+    const data = await res.json();
+    if (requestId !== geometryRequestId) return;
+    if (!res.ok || data.error) {
+      const detail = [...(data.details || []), ...(data.unresolved || [])].join(' · ');
+      throw new Error([data.error || `HTTP ${res.status}`, detail].filter(Boolean).join(' '));
+    }
+    const items = (data.solution || []).map((step) => ({ title: step.title, body: step.body }));
+    if (data.issues?.length) items.unshift({ title: 'Lưu ý kiểm chứng', body: data.issues.join(' · ') });
+    if (data.answer) items.push({ title: data.status === 'uncertain' ? 'Chưa xác minh được đáp số' : 'Đáp số', body: data.answer });
+    renderSolution(items.length ? items : [{ title: 'Chưa có lời giải', body: 'AI chưa trả được lời giải cho đề này.' }]);
+    setStatus(`Không dựng được hình (${sceneError}); đã thử giải riêng${data.status === 'uncertain' ? ', kết quả chưa được xác minh.' : '.'}`, 'warn');
+  } catch (error) {
+    if (requestId !== geometryRequestId) return;
+    renderSolution([{ title: 'Chưa dựng được hình hoặc lời giải', body: error.message }]);
+    setStatus(`Dựng hình lỗi: ${sceneError}. Luồng giải riêng cũng lỗi: ${error.message}`, 'err');
+  }
+}
+
 function clearCurrentGeometry(message = 'Chưa có hình cho đề hiện tại.') {
   stopPlay();
   annotationOn = false; clearAnnotations();
@@ -717,7 +742,8 @@ async function parseAndBuild() {
   } catch (err) {
     if (requestId !== geometryRequestId) return;
     clearCurrentGeometry('Chưa dựng được hình cho đề này. Kiểm tra backend và dữ kiện rồi thử lại.');
-    setStatus(`AI chưa thể dựng hình cho đề này: ${err.message}`, 'warn');
+    setStatus(`AI chưa thể dựng hình: ${err.message}. Đang thử giải riêng…`, 'warn');
+    await solveWithoutFigure(problem, requestId, err.message);
   } finally { if (requestId === geometryRequestId) busy(false); }
 }
 

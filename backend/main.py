@@ -70,6 +70,20 @@ class SolveRequest(BaseModel):
     problem: str
     points: dict | None = None   # {tên: [x,y,z]} các điểm đã có trong hình
     constraints: list[dict] | None = None  # quan hệ hình học đã kiểm tra từ scene
+    text_only: bool = False      # vẫn giải khi scene chưa dựng được
+
+
+def _remove_solution_drawings(result: dict | None) -> dict | None:
+    if not isinstance(result, dict):
+        return result
+    cleaned = dict(result)
+    if isinstance(cleaned.get("solution"), list):
+        cleaned["solution"] = [
+            {**step, "draw": {"points": {}, "segments": [], "dashed": [], "labels": {}}}
+            if isinstance(step, dict) else step
+            for step in cleaned["solution"]
+        ]
+    return cleaned
 
 
 @app.get("/api/health")
@@ -162,24 +176,39 @@ async def solve(req: SolveRequest):
     if not problem:
         return JSONResponse({"error": "Đề bài trống."}, status_code=400)
     try:
+        if req.text_only:
+            points = None
+            constraints = None
+        else:
+            points = req.points
+            constraints = req.constraints
         exact = exact_solution(problem)
-        if exact is not None and not validate_solution_spec(exact, req.points, require_status=True, problem=problem):
-            return exact
-        result = solve_detailed(problem, req.points, req.constraints)
+        if exact is not None:
+            exact_result = _remove_solution_drawings(exact) if req.text_only else exact
+            if not validate_solution_spec(exact_result, points, require_status=True, problem=problem):
+                return exact_result
+        result = solve_detailed(problem, points, constraints)
         if result is None:
             return JSONResponse({"error": "Chưa cấu hình Gemini; không có lời giải mẫu thay cho đề này."}, status_code=503)
-        errors = validate_solution_spec(result, req.points, problem=problem)
+        if req.text_only:
+            result = _remove_solution_drawings(result)
+        errors = validate_solution_spec(result, points, problem=problem)
         if errors:
-            repaired = repair_detailed_solution(problem, req.points, req.constraints, result, errors)
+            repaired = repair_detailed_solution(problem, points, constraints, result, errors)
             if repaired is not None:
                 result = repaired
-                errors = validate_solution_spec(result, req.points, problem=problem)
+                if req.text_only:
+                    repaired = _remove_solution_drawings(repaired)
+                    result = repaired
+                errors = validate_solution_spec(result, points, problem=problem)
         if errors:
             return JSONResponse({"error": "Lời giải AI còn thiếu hoặc sai cấu trúc sau khi tự sửa.", "details": errors}, status_code=422)
-        reviewed = verify_detailed(problem, req.points, req.constraints, result)
+        reviewed = verify_detailed(problem, points, constraints, result)
         if reviewed is None:
             return JSONResponse({"error": "AI kiểm tra độc lập không phản hồi; lời giải chưa được xác nhận."}, status_code=503)
-        errors = validate_solution_spec(reviewed, req.points, require_status=True, problem=problem)
+        if req.text_only:
+            reviewed = _remove_solution_drawings(reviewed)
+        errors = validate_solution_spec(reviewed, points, require_status=True, problem=problem)
         if errors:
             return JSONResponse({"error": "Lời giải sau kiểm tra có cấu trúc không hợp lệ.", "details": errors}, status_code=422)
         reviewed["source"] = "gemini-independent-review"
