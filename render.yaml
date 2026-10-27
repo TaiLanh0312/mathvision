@@ -4,6 +4,7 @@ services:
     name: mathvision
     runtime: docker
     plan: free
+    autoDeployTrigger: commit
     envVars:
       - key: GEMINI_API_KEY
         sync: false            # nhập thủ công trong dashboard (bí mật)
