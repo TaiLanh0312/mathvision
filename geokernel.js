@@ -114,6 +114,27 @@ function tetrahedron(a) {
     title: 'Tứ diện đều ABCD', meta: 'Oxyz [O = tâm đáy]',
   };
 }
+/* chân đường vuông góc hạ từ điểm P xuống ĐƯỜNG THẲNG qua A,B (3D) */
+function footPointLine(P, A, B) {
+  const d = sub(B, A);
+  const dd = dot(d, d) || 1;
+  const t = dot(sub(P, A), d) / dd;
+  return addS(A, d, t);
+}
+
+/* Chóp S.ABC, SA⊥đáy, đáy TAM GIÁC VUÔNG bất kỳ (A,B,C cho sẵn toạ độ). */
+function saPerpTriFrom(A, B, C, saExpr, a, title, rightAt) {
+  const S = [A[0], A[1], lengthToNum(saExpr, a)];
+  return {
+    kind: 'sa-perp-pyramid', points: { A, B, C, S }, apex: 'S', footOfApex: 'A', base: ['A', 'B', 'C'],
+    solidEdges: [['A', 'B'], ['B', 'C'], ['S', 'A'], ['S', 'B'], ['S', 'C']],
+    dashedEdges: [['C', 'A']],
+    faces: [['A', 'B', 'C']],
+    labels: { A: [-0.3, 0.05, -0.05], B: [0.3, 0.05, -0.05], C: [0.15, -0.3, 0.05], S: [-0.1, 0.3, 0] },
+    title, meta: 'Oxyz [A = Gốc]',
+    rightAngleAt: rightAt && { at: rightAt, from: ({ A: 'B', B: 'A', C: 'A' })[rightAt], to: ({ A: 'C', B: 'C', C: 'B' })[rightAt] },
+  };
+}
 function saPerpTriPyramid(a, saExpr, legLen, baseKind) {
   // Chóp S.ABC, SA ⊥ đáy. baseKind: 'right-iso-B' (vuông cân tại B) | 'right-B'.
   const L = legLen || 2 * a;
@@ -510,6 +531,7 @@ function derivePoints(t, basePoints) {
   const P = { ...basePoints };
   const added = {};
   const hints = {};
+  const segments = [], dashed = [];
   // Trung điểm: "M, N, P (lần lượt) là trung điểm của các cạnh AB, BC, CC'"
   const SEP = '\\s*(?:,|v[aà])\\s*';
   const namesM = t.match(new RegExp(`(${_N}(?:${SEP}${_N})*)\\s+l[aầ]n\\s*l[uượ]+t`, 'i'))
@@ -550,7 +572,29 @@ function derivePoints(t, basePoints) {
       hints[neu] = `Trên ${from}${to}: ${from}${neu} = ${k}·${neu}${to}.`;
     }
   }
-  return { points: added, hints };
+  // Điểm trên đoạn (di động / tổng quát): "I là điểm (di động) trên cạnh AC" -> vị trí minh hoạ
+  const onSegRe = new RegExp(`(${_N})\\s+l[aà]\\s+đi[eể]m\\s+(?:di\\s*đ[oộ]ng\\s+)?(?:n[aằ]m\\s+)?tr[eê]n\\s+(?:c[aạ]nh\\s+|đo[aạ]n\\s+(?:th[aẳ]ng\\s+)?)?(${_N})(${_N})`, 'gi');
+  let om;
+  while ((om = onSegRe.exec(t))) {
+    const neu = om[1], x = om[2], y = om[3];
+    if (!added[neu] && !basePoints[neu] && P[x] && P[y]) {
+      P[neu] = addS(P[x], sub(P[y], P[x]), 0.45); added[neu] = P[neu];
+      hints[neu] = `Điểm trên ${x}${y} (vị trí minh hoạ; đề cho di động).`;
+    }
+  }
+  // Chân vuông góc hạ từ điểm xuống ĐƯỜNG: "J là hình chiếu của S trên/lên BI"
+  const footRe = new RegExp(`(${_N})\\s+(?:l[aà]\\s+)?h[iì]nh\\s*chi[eế]u\\s*(?:vu[oô]ng\\s*g[oó]c\\s*)?c[uủ]a\\s+(${_N})\\s+(?:tr[eê]n|l[eê]n)\\s+(${_N})(${_N})`, 'gi');
+  let fm;
+  while ((fm = footRe.exec(t))) {
+    const neu = fm[1], p = fm[2], x = fm[3], y = fm[4];
+    if (P[p] && P[x] && P[y]) {
+      P[neu] = footPointLine(P[p], P[x], P[y]); added[neu] = P[neu];
+      hints[neu] = `Hình chiếu vuông góc của ${p} lên ${x}${y}.`;
+      segments.push([x, y]);        // vẽ đường chứa chân vuông góc (vd BI)
+      dashed.push([p, neu]);        // đoạn vuông góc (vd SJ)
+    }
+  }
+  return { points: added, hints, segments, dashed };
 }
 
 function detectFigure(t) {
@@ -600,11 +644,26 @@ function detectFigure(t) {
   if (/t[uứ]\s*di[eệ]n/.test(s)) return tetrahedron(a);
   if (/s\.abc\b/.test(s) || (/tam\s*giác/.test(s) && /chóp/.test(s))) {
     const saPerp = /s\s*a\s*(?:vuông\s*góc|⊥)/.test(s) || /(?:vuông\s*góc|⊥)[^.]*\(abc\)/.test(s);
-    if (saPerp) {
-      if (!/vuông\s*c[aâ]n/.test(s)) return null;
-      const leg = s.match(/(?:ab|bc|ba|cb)\s*=\s*(?:bc|ab|cb|ba)\s*=\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/);
-      const sa = s.match(/sa\s*(?:=|bằng)\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/);
-      return saPerpTriPyramid(a, sa ? sa[1] : null, leg ? lengthToNum(leg[1], a) : null, 'right-iso-B');
+    if (saPerp && /vuông/.test(s)) {
+      const saM = s.match(/sa\s*(?:=|bằng)\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/);
+      const saExpr = saM ? saM[1] : '2a';
+      const iso = /vuông\s*c[aâ]n/.test(s);
+      const rm = s.match(/vuông\s*t[aạ]i\s*([a-c])/);
+      const R = rm ? rm[1].toUpperCase() : (iso ? 'B' : 'C');
+      const sideM = s.match(/\b(ab|bc|ca|ac)\s*=\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/);
+      const angM = s.match(/g[oó]c\s*[a-c]{3}\s*(?:=|bằng)?\s*([0-9]+)/);
+      const sideVal = sideM ? lengthToNum(sideM[2], a) : 2 * a;
+      let A = [0, 0, 0], B, C;
+      if (R === 'C') {                         // vuông tại C: AB là cạnh huyền, góc tại A
+        const th = (angM ? +angM[1] : (iso ? 45 : 40)) * Math.PI / 180;
+        C = [sideVal * Math.cos(th), 0, 0]; B = [sideVal * Math.cos(th), sideVal * Math.sin(th), 0];
+      } else if (R === 'A') {                   // vuông tại A
+        const th = (angM ? +angM[1] : 40) * Math.PI / 180;
+        B = [sideVal, 0, 0]; C = [0, sideVal * Math.tan(th), 0];
+      } else {                                  // vuông tại B (gồm vuông cân)
+        const L = sideVal; B = [L, 0, 0]; C = [L, iso ? L : L * 0.7, 0];
+      }
+      return saPerpTriFrom(A, B, C, saExpr, a, `Chóp S.ABC (SA⊥, vuông tại ${R})`, R);
     }
     if (!/ch[oó]p\s*đều/.test(s)) return null;
     const lat = s.match(/cạnh\s*bên\s*(?:bằng|là|=)?\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/);
@@ -734,9 +793,7 @@ export function solveProblem(text) {
   // Guard: các cấu trúc kernel CHƯA dựng chính xác -> nhường AI (tránh vẽ sai).
   const UNSUPPORTED = [
     /m[aặ]t\s*c[aầ]u/i,                                   // mặt cầu
-    /h[iì]nh\s*chi[eế]u[^.]*?(đường\s*ch[eé]o|đường\s*th[aẳ]ng|l[eê]n\s+[A-Z]{2}\b)/i, // chiếu lên ĐƯỜNG
     /giao\s*đi[eể]m\s*c[uủ]a\s+hai/i,                     // giao hai đường
-    /di\s*đ[oộ]ng/i,                                      // điểm di động
     /vu[oô]ng\s*g[oó]c\s*v[oớ]i\s*m[aặ]t\s*ph[aẳ]ng\s*\(/i, // mp ⊥ mp
     /đi[eể]m\s*(?:[A-Z]'?)\s*l[aà]\s*t[aâ]m\s/i,          // "O là tâm ..." (điểm = tâm)
   ];
@@ -749,22 +806,12 @@ export function solveProblem(text) {
   const working = { ...F.points, ...der.points };
   const Q = detectQuestions(t, F, working);
 
-  // Avoid claiming success when a recognized solid still has unanswered parts.
-  // Route the whole prompt to the AI parser/solver instead.
-  const unsupportedTask = /ch[uứ]ng\s*minh|di[eệ]n\s*t[ií]ch|th[eể]\s*t[ií]ch|đ[oộ]\s*d[aà]i|t[oọ]a\s*đ[oộ]|giao\s*đi[eể]m|h[iì]nh\s*chi[eế]u|ti[eế]p\s*tuy[eế]n/i.test(t);
-  const sectionRequests = (t.match(/thi[eế]t\s*di[eệ]n/g) || []).length;
-  const sectionResults = Q.layers.filter((L) => L.key === 'section').length;
-  const angleRequests = (t.match(/g[oó]c\s+(?:gi[uữ]a|c[uủ]a)\s+[A-Z]'?[A-Z]'?/gi) || []).length;
-  const angleResults = Q.layers.filter((L) => L.key.startsWith('angle')).length;
-  if (unsupportedTask || sectionRequests > sectionResults || angleRequests > angleResults) {
-    return { ok: false, reason: 'unparsed-question' };
-  }
+  // Triết lý: kernel luôn DỰNG HÌNH chính xác khi nhận diện được khối/đáy.
+  // Phần giải khó (chứng minh, thể tích, khoảng cách tổng quát...) KHÔNG chặn việc vẽ —
+  // người dùng bấm "Giải kỹ (AI)" để có lời giải đầy đủ.
+  // Chỉ nhường AI khi chính HÌNH còn phải giả định (không chắc toạ độ).
   if (F.assumptions?.length && (Q.layers.length || Q.distance)) {
     return { ok: false, reason: 'assumptions-needed', assumptions: F.assumptions };
-  }
-  const hasQuestionIntent = /(?:t[ií]nh|t[iì]m|x[aá]c\s*đ[iị]nh|d[uự]ng|v[eẽ]|g[oó]c|thi[eế]t\s*di[eệ]n|kho[aả]ng\s*c[aá]ch)\b/i.test(t);
-  if (hasQuestionIntent && Q.layers.length === 0 && !Q.distance) {
-    return { ok: false, reason: 'unparsed-question' };
   }
 
   const points = { ...working, ...Q.newPoints };
@@ -815,6 +862,12 @@ export function solveProblem(text) {
   Object.keys(der.points).forEach((n) => construction.push({
     title: `Dựng điểm ${n}`, body: der.hints[n] || 'Xác định theo dữ kiện đề bài.', color: 'cyan', points: [n],
   }));
+  if ((der.segments && der.segments.length) || (der.dashed && der.dashed.length)) {
+    construction.push({
+      title: 'Dựng đường phụ', body: 'Nối các đoạn theo dữ kiện (đường & đoạn vuông góc).',
+      color: 'cyan', solidEdges: der.segments || [], dashedEdges: der.dashed || [],
+    });
+  }
   layers.forEach((L) => construction.push({
     title: L.name,
     body: L.key === 'section' ? 'Cắt khối bởi mặt phẳng → đa giác thiết diện.'
