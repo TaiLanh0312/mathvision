@@ -13,7 +13,8 @@ from prompts import (SYSTEM_PROMPT, USER_TEMPLATE, ONE_SHOT_PROBLEM, ONE_SHOT_JS
                      GRAPH_SYSTEM, GRAPH_USER, SOLUTION_SYSTEM, SOLUTION_USER,
                      OCR_SYSTEM, OCR_USER, SOLVE_SYSTEM, SOLVE_USER,
                      VERIFY_SOLVE_SYSTEM, VERIFY_SOLVE_USER,
-                     LATEX_SYSTEM, LATEX_USER)
+                     LATEX_SYSTEM, LATEX_USER, REPAIR_SCENE_SYSTEM, REPAIR_SCENE_USER,
+                     REPAIR_SOLUTION_SYSTEM, REPAIR_SOLUTION_USER)
 
 try:  # SDK mới, hỗ trợ tắt thinking + nhanh
     from google import genai
@@ -47,7 +48,7 @@ def parse_geometry(problem: str) -> dict | None:
         return None
 
     client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-    model = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
+    model = os.getenv("GEMINI_GEOMETRY_MODEL") or "gemini-3.8-flash"
 
     # One-shot: ví dụ chuẩn (user->model) rồi tới đề thật.
     contents = [
@@ -62,7 +63,8 @@ def parse_geometry(problem: str) -> dict | None:
             system_instruction=SYSTEM_PROMPT,
             response_mime_type="application/json",
             temperature=0.15,
-            max_output_tokens=8192,
+            max_output_tokens=16384,
+            thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.HIGH),
         ),
     )
     return _extract_json(resp.text)
@@ -110,26 +112,37 @@ def ocr_latex(image_data_url: str) -> dict | None:
     return _vision_json(image_data_url, LATEX_SYSTEM, LATEX_USER, max_tokens=2048)
 
 
-def _text_json(system: str, user: str, max_tokens: int = 4096) -> dict | None:
+def _text_json(system: str, user: str, max_tokens: int = 8192) -> dict | None:
     """Gọi Gemini chỉ với văn bản, trả JSON."""
     if not is_configured():
         return None
     client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-    model = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
+    model = os.getenv("GEMINI_REASONING_MODEL") or "gemini-3.8-flash"
     resp = client.models.generate_content(
         model=model, contents=user,
         config=types.GenerateContentConfig(
             system_instruction=system, response_mime_type="application/json",
-            temperature=0.2, max_output_tokens=max_tokens,
+            temperature=0.1, max_output_tokens=max_tokens,
+            thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.HIGH),
         ),
     )
     return _extract_json(resp.text)
 
 
+def repair_geometry(problem: str, candidate: dict, errors: list[str]) -> dict | None:
+    """Ask Gemini to repair a structurally rejected scene once."""
+    user = REPAIR_SCENE_USER.format(
+        problem=problem,
+        candidate=json.dumps(candidate, ensure_ascii=False),
+        errors=json.dumps(errors, ensure_ascii=False),
+    )
+    return _text_json(REPAIR_SCENE_SYSTEM, user, max_tokens=16384)
+
+
 def solve_detailed(problem: str, points: dict | None = None, constraints: list | None = None) -> dict | None:
     pts = json.dumps(points or {}, ensure_ascii=False)
     rels = json.dumps(constraints or [], ensure_ascii=False)
-    return _text_json(SOLVE_SYSTEM, SOLVE_USER.format(problem=problem, points=pts, constraints=rels))
+    return _text_json(SOLVE_SYSTEM, SOLVE_USER.format(problem=problem, points=pts, constraints=rels), max_tokens=16384)
 
 
 def verify_detailed(problem: str, points: dict | None, constraints: list | None, candidate: dict) -> dict | None:
@@ -139,4 +152,17 @@ def verify_detailed(problem: str, points: dict | None, constraints: list | None,
     draft = json.dumps(candidate or {}, ensure_ascii=False)
     return _text_json(VERIFY_SOLVE_SYSTEM,
                       VERIFY_SOLVE_USER.format(problem=problem, points=pts, constraints=rels, candidate=draft),
-                      max_tokens=6144)
+                      max_tokens=16384)
+
+
+def repair_detailed_solution(problem: str, points: dict | None, constraints: list | None,
+                             candidate: dict, errors: list[str]) -> dict | None:
+    """Repair missing answer/steps/drawing structure before independent review."""
+    user = REPAIR_SOLUTION_USER.format(
+        problem=problem,
+        points=json.dumps(points or {}, ensure_ascii=False),
+        constraints=json.dumps(constraints or [], ensure_ascii=False),
+        candidate=json.dumps(candidate or {}, ensure_ascii=False),
+        errors=json.dumps(errors, ensure_ascii=False),
+    )
+    return _text_json(REPAIR_SOLUTION_SYSTEM, user, max_tokens=16384)

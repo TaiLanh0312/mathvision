@@ -32,8 +32,10 @@ except ImportError:
     pass
 
 from gemini_client import (parse_geometry, grade_graph, grade_solution,
-                           ocr_problem, ocr_latex, solve_detailed, verify_detailed, is_configured)
+                           ocr_problem, ocr_latex, solve_detailed, verify_detailed,
+                           repair_geometry, repair_detailed_solution, is_configured)
 from geometry_validation import validate_scene_spec, validate_solution_spec
+from special_cases import exact_scene, exact_solution
 from samples import (mock_grade, mock_solution, mock_ocr,
                      mock_latex)
 
@@ -81,10 +83,18 @@ async def parse(req: ParseRequest):
     if not problem:
         return JSONResponse({"error": "Đề bài trống."}, status_code=400)
     try:
+        exact = exact_scene(problem)
+        if exact is not None and not validate_scene_spec(exact, problem):
+            return exact
         spec = parse_geometry(problem)
         if spec is None:
             return JSONResponse({"error": "Chưa cấu hình Gemini. Không tạo hình mẫu thay cho đề của bạn."}, status_code=503)
         errors = validate_scene_spec(spec, problem)
+        if errors:
+            repaired = repair_geometry(problem, spec, errors)
+            if repaired is not None:
+                spec = repaired
+                errors = validate_scene_spec(spec, problem)
         if errors:
             return JSONResponse({"error": "Scene AI trả về không hợp lệ.", "details": errors}, status_code=422)
         if spec.get("unresolved"):
@@ -152,12 +162,20 @@ async def solve(req: SolveRequest):
     if not problem:
         return JSONResponse({"error": "Đề bài trống."}, status_code=400)
     try:
+        exact = exact_solution(problem)
+        if exact is not None and not validate_solution_spec(exact, req.points, require_status=True, problem=problem):
+            return exact
         result = solve_detailed(problem, req.points, req.constraints)
         if result is None:
             return JSONResponse({"error": "Chưa cấu hình Gemini; không có lời giải mẫu thay cho đề này."}, status_code=503)
         errors = validate_solution_spec(result, req.points, problem=problem)
         if errors:
-            return JSONResponse({"error": "Lời giải nháp có cấu trúc không hợp lệ.", "details": errors}, status_code=422)
+            repaired = repair_detailed_solution(problem, req.points, req.constraints, result, errors)
+            if repaired is not None:
+                result = repaired
+                errors = validate_solution_spec(result, req.points, problem=problem)
+        if errors:
+            return JSONResponse({"error": "Lời giải AI còn thiếu hoặc sai cấu trúc sau khi tự sửa.", "details": errors}, status_code=422)
         reviewed = verify_detailed(problem, req.points, req.constraints, result)
         if reviewed is None:
             return JSONResponse({"error": "AI kiểm tra độc lập không phản hồi; lời giải chưa được xác nhận."}, status_code=503)

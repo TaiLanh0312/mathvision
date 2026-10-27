@@ -33,12 +33,18 @@ Mở **http://localhost:8000** — backend phục vụ luôn frontend.
 ## Kiến trúc dựng hình và giải: AI-first, có kiểm tra
 Khi bấm "Dựng & Bóc Tách 3D":
 
-1. Toàn bộ đề được gửi cho Gemini để trích các ý hỏi, dựng scene 3D, và liệt kê giả định
+1. Toàn bộ đề được gửi cho Gemini để trích các ý hỏi, dựng scene 2D/3D, và liệt kê giả định
    hoặc dữ kiện chưa xác định.
-2. Backend kiểm tra tham chiếu điểm, cạnh, mặt, đa giác, dấu vuông góc và các ràng buộc
-   hình học mà AI khai báo trước khi cho renderer nhận scene.
-3. Lời giải được tạo ở một lượt AI rồi một lượt khác giải lại độc lập. Nếu chưa xác nhận
-   được, giao diện đánh dấu chưa kiểm chứng; không dùng lời giải/hình mẫu thay thế.
+2. Các scene/lời giải thiếu trường hoặc bỏ sót ý được gửi thêm một lượt để AI tự sửa; backend
+   kiểm tra tham chiếu điểm, cạnh, mặt, đa giác, dấu vuông góc, quan hệ tọa độ và mức bao phủ ý hỏi.
+3. Lời giải được tạo, kiểm tra cấu trúc, rồi một lượt AI suy luận độc lập giải lại. Nếu chưa
+   xác nhận được, giao diện đánh dấu chưa kiểm chứng; không dùng lời giải/hình mẫu thay thế.
+
+Luồng hình học mặc định dùng `gemini-3.8-flash` với mức suy luận cao. Có thể đặt
+`GEMINI_GEOMETRY_MODEL` và `GEMINI_REASONING_MODEL` trên Render để chọn model khác có hỗ trợ
+Gemini API. Mức suy luận cao tăng thời gian và lượng token sử dụng. Đây vẫn là hệ thống AI có
+kiểm tra cấu trúc/toạ độ, chưa phải bộ chứng minh tổng quát; cần đánh giá trên bộ đề chuẩn trước
+khi xem là đáng tin cậy cho mọi dạng bài.
 
 Tất cả đều trả về cùng một *scene spec* JSON khai báo (`points / solidEdges /
 dashedEdges / faces / curves / layers / entities / steps`). `geometry3d.js` là renderer

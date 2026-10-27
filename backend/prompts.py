@@ -16,10 +16,13 @@ mô hình 3D để dựng bằng Three.js. KHÔNG kèm lời giải thích, KHÔ
 - Liệt kê mọi quy ước chỉ dùng để minh họa (ví dụ chọn a=2.4) trong "assumptions".
 - Ghi vào "constraints" các quan hệ được nêu rõ trong đề; không tự suy ra quan hệ.
 - "perpendicular" và "parallel" dùng hai đoạn trong "segments" làm vector chỉ phương.
+- Vuông góc giữa hai mặt phẳng dùng "plane_perpendicular" với hai bộ ba điểm không thẳng hàng trong "planes".
 - Nếu đề mâu thuẫn, ghi mâu thuẫn trong "unresolved" và không dựng các lớp kết luận sai.
 
 QUY ƯỚC TOẠ ĐỘ:
 - Dùng hệ Oxyz, đơn vị quy ước (chọn cạnh gốc a ≈ 2.4). z là chiều cao.
+- Với hình phẳng, đặt toàn bộ điểm có z=0 và dựng đúng cấu hình phẳng; không tự nâng thành khối 3D.
+- Trước khi trả JSON, lập danh sách đủ giả thiết, đối tượng, ý hỏi, giao điểm và đường/mặt cần dựng; rà lại từng mục đã có trong scene.
 - Tính TOẠ ĐỘ SỐ cho MỌI điểm, kể cả điểm phụ (chân đường vuông góc, giao điểm,
   trung điểm, tâm đáy...). Tự giải hình học để ra số thực, làm tròn 4 chữ số.
 - Chọn dashedEdges là các cạnh KHUẤT (nằm sau khối khi nhìn chuẩn) để vẽ nét đứt.
@@ -41,6 +44,7 @@ SCHEMA JSON (bắt buộc đúng khoá):
   "unresolved": [string],        // dữ kiện thiếu/mâu thuẫn; [] nếu đủ xác định
   "constraints": [               // các quan hệ trích từ đề để kiểm tra tọa độ
     {"type":"perpendicular|parallel|equal_length","segments":[["A","B"],["C","D"]]},
+    {"type":"plane_perpendicular","planes":[["A","B","C"],["D","E","F"]]},
     {"type":"midpoint","point":"M","segment":["A","B"]},
     {"type":"coplanar","points":["A","B","C","D"]}
   ],
@@ -143,6 +147,9 @@ giải mẫu, có lập luận + công thức (ký hiệu √, ², ∫, ⊥, ∠
   có nhiều đáp số, nói rõ điều đó và không tự chọn một trường hợp.
 - Với kết quả số, ghi công thức, phép thế, đơn vị và kiểm tra ngược điều kiện đề.
 - Kiểm tra tên điểm/đường/mặt nhất quán với danh sách điểm được cung cấp.
+- Giải hình phẳng và không gian bằng lập luận hình học/toạ độ phù hợp; tách rõ giả thiết, điều phải chứng minh/tính, và kết luận.
+- Với bài nhiều bước hoặc rườm rà, không bỏ phép dựng trung gian. Tự kiểm tra lại bằng cách thế ngược/toạ độ/định lý độc lập khi có thể.
+- Nếu không thể xác minh một bước, nói rõ giới hạn trong answer và issues; không gắn nhãn verified chỉ vì lời giải nghe hợp lý.
 
 QUAN TRỌNG — VẼ THÊM VÀO HÌNH:
 Bạn được cung cấp DANH SÁCH ĐIỂM đã có (tên + toạ độ trong hệ đã dựng). Khi lời giải
@@ -179,6 +186,8 @@ VERIFY_SOLVE_SYSTEM = r"""Bạn là giám khảo độc lập. TỰ GIẢI LẠI
 - Nếu đề thiếu dữ kiện, mâu thuẫn, hoặc không thể xác minh chắc chắn, trả status="uncertain",
   nêu rõ phần chưa xác minh trong issues và không khẳng định đáp số.
 - Chỉ dùng dữ kiện đề và tọa độ đã cho; kiểm tra các tọa độ mới có thỏa quan hệ hình học.
+- Tự lập lời giải độc lập trước khi xem xét nháp; kiểm tra đáp số bằng phép tính khác hoặc thế ngược khi có thể.
+- Chỉ chọn verified khi đủ căn cứ kiểm tra được toàn bộ ý; nếu không, chọn uncertain và mô tả chính xác điều chưa kiểm tra.
 Trả duy nhất JSON đúng schema:
 {"status":"verified|corrected|uncertain","issues":[string],
  "solution":[{"title":string,"body":string,"draw":{"points":{},"segments":[],"dashed":[],"labels":{}}}],
@@ -204,6 +213,28 @@ USER_TEMPLATE = """Đề bài:
 \"\"\"{problem}\"\"\"
 
 Trả về JSON scene spec theo đúng schema."""
+
+REPAIR_SCENE_SYSTEM = r"""Bạn là chuyên gia sửa dữ liệu hình học 3D. Hãy sửa scene JSON để thỏa dữ kiện đề và toàn bộ lỗi kiểm tra.
+Giữ nguyên mọi phần đúng, mọi ý hỏi, điểm/cạnh/mặt cần thiết. Không xóa constraint chỉ để qua kiểm tra; hãy sửa tọa độ hoặc cách biểu diễn cho đúng.
+Vuông góc giữa hai mặt phẳng dùng {"type":"plane_perpendicular","planes":[[A,B,C],[D,E,F]]} với hai bộ ba điểm không thẳng hàng. Vuông góc giữa hai đường dùng type perpendicular và segments.
+Chỉ trả JSON scene hoàn chỉnh, không markdown."""
+
+REPAIR_SCENE_USER = """Đề bài:
+\"\"\"{problem}\"\"\"
+Scene hiện tại (JSON): {candidate}
+Các lỗi phải sửa hết (JSON): {errors}
+Sửa scene để đúng đề, nhất quán tọa độ và giữ đủ nội dung."""
+
+REPAIR_SOLUTION_SYSTEM = r"""Bạn là biên tập viên lời giải toán. Sửa JSON lời giải để khắc phục các lỗi cấu trúc được nêu, giữ nguyên toán học đúng và không bịa thêm giả thiết.
+Nếu phát hiện nội dung toán chưa thể xác minh, hãy ghi rõ giới hạn trong answer và issues, đặt status="uncertain".
+Trả duy nhất JSON theo schema: {"status":"verified|corrected|uncertain","issues":[string],"solution":[{"title":string,"body":string,"draw":{"points":{},"segments":[],"dashed":[],"labels":{}}}],"answer":string}."""
+
+REPAIR_SOLUTION_USER = """Đề bài: \"\"\"{problem}\"\"\"
+Toạ độ nền: {points}
+Ràng buộc hình học: {constraints}
+Lời giải hiện tại: {candidate}
+Lỗi cấu trúc: {errors}
+Hãy sửa cấu trúc và bảo toàn tính đúng đắn toán học."""
 
 # One-shot example (anchors format + coordinate math).
 ONE_SHOT_PROBLEM = (

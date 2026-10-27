@@ -676,7 +676,9 @@ function clearCurrentGeometry(message = 'Chưa có hình cho đề hiện tại.
   Object.values(pointMarkers).forEach((pm) => disposeGroup(pm.group));
   stepGroups = []; pointMarkers = {}; lineMaterials = []; structuralFaceMats = [];
   currentSpec = null; currentStep = 0;
-  renderPointPanel(); renderEntities([]); renderStepList([]); renderSolution([]); buildStepPlayer(0); updateStepUI();
+  renderPointPanel(); renderEntities([]); renderStepList([]);
+  renderSolution([{ title: 'Trạng thái dựng hình', body: message }]);
+  buildStepPlayer(0); updateStepUI();
   host?.querySelector('.v-empty')?.remove();
   if (host) {
     const empty = document.createElement('div');

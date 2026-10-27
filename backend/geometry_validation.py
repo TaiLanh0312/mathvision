@@ -16,6 +16,8 @@ def validate_scene_spec(spec: object, problem: str = "") -> list[str]:
         return ["Scene thiếu danh sách tọa độ points."]
 
     errors: list[str] = []
+    if not isinstance(spec.get("title"), str) or not spec["title"].strip():
+        errors.append("Scene thiếu title hợp lệ.")
     has_point = lambda name: isinstance(name, str) and name in points
 
     def xyz(name: object):
@@ -194,6 +196,20 @@ def validate_scene_spec(spec: object, problem: str = "") -> list[str]:
     asked = _question_parts(problem)
     if asked and len(layers) < len(asked):
         errors.append(f"Đề có {len(asked)} ý hỏi có nhãn nhưng scene chỉ có {len(layers)} layer; có thể đã bỏ sót ý.")
+    if asked:
+        named_layers = " ".join(str(layer.get("name", "")) for layer in layers if isinstance(layer, dict)).lower()
+        for part in sorted(asked):
+            if not re.search(rf"(?:câu|ý)\s*{re.escape(part)}\b", named_layers):
+                errors.append(f"Scene chưa có layer nhận diện rõ ý {part}.")
+
+    scene_steps = spec.get("steps")
+    if not isinstance(scene_steps, list) or not scene_steps:
+        errors.append("Scene thiếu các bước dựng/giải thích hình.")
+    elif asked:
+        step_titles = " ".join(str(step.get("title", "")) for step in scene_steps if isinstance(step, dict)).lower()
+        for part in sorted(asked):
+            if not re.search(rf"(?:câu|ý)\s*{re.escape(part)}\b", step_titles):
+                errors.append(f"Các bước của scene chưa đề cập rõ ý {part}.")
 
     defaults = spec.get("defaultLayers", [])
     if not isinstance(defaults, list) or any(not isinstance(key, str) or key not in layer_keys for key in defaults):
@@ -212,7 +228,24 @@ def validate_scene_spec(spec: object, problem: str = "") -> list[str]:
             errors.append("Một constraint không phải object JSON.")
             continue
         kind = constraint.get("type")
-        if kind in ("perpendicular", "parallel"):
+        if kind == "plane_perpendicular":
+            planes = constraint.get("planes")
+            if (not isinstance(planes, list) or len(planes) != 2
+                    or any(not isinstance(plane, list) or len(plane) != 3
+                           or any(not has_point(name) for name in plane) for plane in planes)):
+                errors.append("Constraint plane_perpendicular cần hai bộ ba điểm hợp lệ.")
+                continue
+            coords = [[xyz(name) for name in plane] for plane in planes]
+            if any(any(p is None for p in plane) for plane in coords):
+                errors.append("Constraint plane_perpendicular có tọa độ không hợp lệ.")
+                continue
+            normals = [cross(sub(plane[1], plane[0]), sub(plane[2], plane[0])) for plane in coords]
+            lengths = [norm(n) for n in normals]
+            if min(lengths) < 1e-9:
+                errors.append("Constraint plane_perpendicular có ba điểm thẳng hàng.")
+            elif abs(sum(normals[0][i] * normals[1][i] for i in range(3))) / (lengths[0] * lengths[1]) > 1e-3:
+                errors.append("Tọa độ không thỏa ràng buộc plane_perpendicular.")
+        elif kind in ("perpendicular", "parallel"):
             vectors = check_segments(constraint.get("segments"), 2)
             if vectors is None:
                 errors.append(f"Constraint {kind} cần hai đoạn hợp lệ.")
@@ -272,8 +305,12 @@ def validate_solution_spec(result: object, base_points: object = None, require_s
         errors.append("Trạng thái kiểm chứng lời giải không hợp lệ.")
     if not isinstance(result.get("solution"), list):
         return errors + ["Lời giải thiếu danh sách solution."]
+    if not result["solution"]:
+        errors.append("Lời giải chưa có bước giải nào.")
     if not isinstance(result.get("answer", ""), str):
         errors.append("answer phải là văn bản.")
+    elif not result.get("answer", "").strip():
+        errors.append("Lời giải chưa nêu kết luận hoặc lý do chưa thể kết luận.")
     if require_status and "issues" not in result:
         errors.append("Kết quả kiểm tra thiếu issues.")
     if "issues" in result and (not isinstance(result["issues"], list)
@@ -287,6 +324,8 @@ def validate_solution_spec(result: object, base_points: object = None, require_s
             errors.append(f"Bước {index + 1} không phải object JSON.")
             continue
         heading = str(step.get("title", ""))
+        if not heading.strip() or not str(step.get("body", "")).strip():
+            errors.append(f"Bước {index + 1} thiếu tiêu đề hoặc nội dung lập luận.")
         covered_parts.update(re.findall(r"(?:câu|ý)\s*([a-z])\b", heading, re.IGNORECASE))
         draw = step.get("draw", {})
         if not isinstance(draw, dict):
