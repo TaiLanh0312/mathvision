@@ -2,8 +2,8 @@
 
 - Serves the static thin-client frontend (so ES modules load over http,
   no file:// CORS issue).
-- POST /api/geometry/parse : turn a THPT problem into a 3D scene spec
-  via Gemini 1.5 Pro, with an offline mock fallback.
+- POST /api/geometry/parse : turn a THPT problem into a validated 3D scene spec via Gemini.
+- POST /api/geometry/solve : solve, then independently review the complete problem via Gemini.
 
 Run:
     cd backend
@@ -32,9 +32,10 @@ except ImportError:
     pass
 
 from gemini_client import (parse_geometry, grade_graph, grade_solution,
-                           ocr_problem, ocr_latex, solve_detailed, is_configured)
-from samples import (mock_scene, mock_grade, mock_solution, mock_ocr,
-                     mock_solve, mock_latex)
+                           ocr_problem, ocr_latex, solve_detailed, verify_detailed, is_configured)
+from geometry_validation import validate_scene_spec, validate_solution_spec
+from samples import (mock_grade, mock_solution, mock_ocr,
+                     mock_latex)
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent  # repo root holds index.html
 
@@ -66,6 +67,7 @@ class OcrRequest(BaseModel):
 class SolveRequest(BaseModel):
     problem: str
     points: dict | None = None   # {tên: [x,y,z]} các điểm đã có trong hình
+    constraints: list[dict] | None = None  # quan hệ hình học đã kiểm tra từ scene
 
 
 @app.get("/api/health")
@@ -81,10 +83,16 @@ async def parse(req: ParseRequest):
     try:
         spec = parse_geometry(problem)
         if spec is None:
-            spec = mock_scene(problem)
-            spec["source"] = "mock"
-        else:
-            spec["source"] = "gemini"
+            return JSONResponse({"error": "Chưa cấu hình Gemini. Không tạo hình mẫu thay cho đề của bạn."}, status_code=503)
+        errors = validate_scene_spec(spec, problem)
+        if errors:
+            return JSONResponse({"error": "Scene AI trả về không hợp lệ.", "details": errors}, status_code=422)
+        if spec.get("unresolved"):
+            return JSONResponse({
+                "error": "Đề còn thiếu hoặc mâu thuẫn dữ kiện; chưa thể khẳng định hình này đúng.",
+                "unresolved": spec["unresolved"],
+            }, status_code=422)
+        spec["source"] = "gemini"
         return spec
     except Exception as exc:  # surface a clean error to the frontend
         return JSONResponse({"error": f"{type(exc).__name__}: {exc}"}, status_code=500)
@@ -144,12 +152,20 @@ async def solve(req: SolveRequest):
     if not problem:
         return JSONResponse({"error": "Đề bài trống."}, status_code=400)
     try:
-        result = solve_detailed(problem, req.points)
+        result = solve_detailed(problem, req.points, req.constraints)
         if result is None:
-            result = mock_solve(problem); result["source"] = "mock"
-        else:
-            result["source"] = "gemini"
-        return result
+            return JSONResponse({"error": "Chưa cấu hình Gemini; không có lời giải mẫu thay cho đề này."}, status_code=503)
+        errors = validate_solution_spec(result, req.points, problem=problem)
+        if errors:
+            return JSONResponse({"error": "Lời giải nháp có cấu trúc không hợp lệ.", "details": errors}, status_code=422)
+        reviewed = verify_detailed(problem, req.points, req.constraints, result)
+        if reviewed is None:
+            return JSONResponse({"error": "AI kiểm tra độc lập không phản hồi; lời giải chưa được xác nhận."}, status_code=503)
+        errors = validate_solution_spec(reviewed, req.points, require_status=True, problem=problem)
+        if errors:
+            return JSONResponse({"error": "Lời giải sau kiểm tra có cấu trúc không hợp lệ.", "details": errors}, status_code=422)
+        reviewed["source"] = "gemini-independent-review"
+        return reviewed
     except Exception as exc:
         return JSONResponse({"error": f"{type(exc).__name__}: {exc}"}, status_code=500)
 

@@ -1,13 +1,8 @@
 /* ============================================================
    MathVision PRO — geokernel.js
-   Bộ giải hình học không gian ĐỘC QUYỀN, chạy 100% client-side.
-
-   Mục tiêu: nhập đề -> dựng hình trong < 50ms, KHÔNG gọi mạng.
-   Thay vì nhờ LLM tính toạ độ (chậm 60-90s + dễ sai), kernel:
-     1) parse đề bằng luật (loại hình + tham số + câu hỏi)
-     2) dựng toạ độ bằng template + đại số vector (xác định, chính xác)
-     3) giải câu hỏi: góc(đường, mặt), thiết diện ⊥ đường, mặt chéo...
-   Trả về scene spec khai báo (đúng định dạng geometry3d.js tiêu thụ).
+   Bộ công cụ vector/template cũ, giữ lại để tham khảo và cho các scene đã biết.
+   Smart 3D hiện không gọi solveProblem làm luồng chính: mọi đề được gửi tới AI;
+   scene và lời giải đi qua các bước kiểm tra ở backend trước khi hiển thị.
 
    export solveProblem(text) -> { ok, kind, spec, reason }
    ============================================================ */
@@ -43,7 +38,8 @@ function lengthToNum(expr, a = A_UNIT) {
   s = s.replace(/a/ig, '');
   let coef = s === '' ? 1 : parseFloat(s);
   if (isNaN(coef)) coef = 1;
-  const base = hasA ? a : a; // mọi độ dài quy theo a (đơn vị dựng)
+  // Symbolic lengths are normalized by a; literal numeric lengths stay literal.
+  const base = hasA ? a : 1;
   return coef * base * sq / div;
 }
 
@@ -52,16 +48,17 @@ function lengthToNum(expr, a = A_UNIT) {
    ============================================================ */
 function squarePyramid(a, hExpr) {
   // Đáy vuông ABCD, SA ⊥ đáy, S trên A.
-  const h = lengthToNum(hExpr, a);
+  const h = hExpr ? lengthToNum(hExpr, a) : a * Math.SQRT2;
   const P = { A:[0,0,0], B:[a,0,0], C:[a,a,0], D:[0,a,0], S:[0,0,h] };
   return {
     kind: 'square-pyramid', points: P, apex: 'S', footOfApex: 'A',
     base: ['A','B','C','D'], baseCenter: mid(P.A, P.C),
     solidEdges: [['A','B'],['B','C'],['S','A'],['S','B'],['S','C']],
     dashedEdges: [['C','D'],['D','A'],['S','D']],
-    faces: [['A','B','C','D']],
+    faces: [['A','B','C','D'], ['S','A','B'], ['S','B','C'], ['S','C','D'], ['S','D','A']],
     labels: { A:[-0.28,-0.1,-0.28], B:[0.28,-0.1,-0.28], C:[0.28,-0.1,0.28], D:[-0.25,-0.1,0.28], S:[0,0.3,0] },
     title: 'Chóp S.ABCD', meta: 'Oxyz [A = Gốc]',
+    assumptions: hExpr ? [] : ['Chưa có SA/chiều cao; hình sơ đồ dùng SA = a√2.'],
   };
 }
 function rectPyramid(a, b, hExpr) {
@@ -72,7 +69,7 @@ function rectPyramid(a, b, hExpr) {
     base: ['A','B','C','D'], baseCenter: mid(P.A, P.C),
     solidEdges: [['A','B'],['B','C'],['S','A'],['S','B'],['S','C']],
     dashedEdges: [['C','D'],['D','A'],['S','D']],
-    faces: [['A','B','C','D']],
+    faces: [['A','B','C','D'], ['S','A','B'], ['S','B','C'], ['S','C','D'], ['S','D','A']],
     labels: { A:[-0.28,-0.1,-0.28], B:[0.28,-0.1,-0.28], C:[0.28,-0.1,0.28], D:[-0.25,-0.1,0.28], S:[0,0.3,0] },
     title: 'Chóp S.ABCD', meta: 'Oxyz [A = Gốc]',
   };
@@ -93,9 +90,10 @@ function regTriPyramid(a, lateralExpr) {
     base: ['A','B','C'], baseCenter: O,
     solidEdges: [['A','B'],['B','C'],['S','A'],['S','B'],['S','C']],
     dashedEdges: [['C','A']],
-    faces: [['A','B','C']],
+    faces: [['A','B','C'], ['S','A','B'], ['S','B','C'], ['S','C','A']],
     labels: { A:[-0.3,-0.1,-0.1], B:[0.3,-0.1,-0.1], C:[0,-0.1,0.38], S:[0,0.32,0] },
     title: 'Chóp đều S.ABC', meta: 'Oxyz [O = tâm đáy]',
+    assumptions: lateralExpr ? [] : ['Chưa có cạnh bên; hình sơ đồ dùng cạnh bên = 1.4a.'],
   };
 }
 function tetrahedron(a) {
@@ -111,7 +109,7 @@ function tetrahedron(a) {
     base: ['A', 'B', 'C'],
     solidEdges: [['A', 'B'], ['B', 'C'], ['D', 'A'], ['D', 'B'], ['D', 'C']],
     dashedEdges: [['C', 'A']],
-    faces: [['A', 'B', 'C']],
+    faces: [['A', 'B', 'C'], ['D','A','B'], ['D','B','C'], ['D','C','A']],
     labels: { A: [0.05, 0.3, -0.05], B: [-0.32, -0.14, 0], C: [0.32, -0.14, 0], D: [0, 0.32, 0.05] },
     title: 'Tứ diện đều ABCD', meta: 'Oxyz [O = tâm đáy]',
   };
@@ -127,14 +125,18 @@ function saPerpTriPyramid(a, saExpr, legLen, baseKind) {
     base: ['A','B','C'],
     solidEdges: [['A','B'],['B','C'],['S','A'],['S','B'],['S','C']],
     dashedEdges: [['C','A']],
-    faces: [['A','B','C']],
+    faces: [['A','B','C'], ['S','A','B'], ['S','B','C'], ['S','C','A']],
     labels: { A:[-0.32,-0.1,-0.05], B:[0.3,-0.12,-0.05], C:[0.3,-0.1,0.32], S:[0,0.32,0] },
     title: 'Chóp S.ABC (SA⊥đáy)', meta: 'Oxyz [A = Gốc]',
-    rightAnglesStatic: [{ at: 'B', from: 'A', to: 'C' }], // đáy vuông tại B
+    assumptions: [
+      ...(!saExpr ? ['Chưa có SA; hình sơ đồ dùng SA = a.'] : []),
+      ...(!legLen ? ['Chưa có cạnh đáy; hình sơ đồ dùng AB = BC = 2a.'] : []),
+    ],
+    rightAngleAt: { at: 'B', from: 'A', to: 'C' }, // đáy vuông tại B
   };
 }
 function triPrism(a, hExpr) {
-  const h = lengthToNum(hExpr, a) || 3.0;
+  const h = hExpr ? lengthToNum(hExpr, a) : a * 1.3;
   const r = a / Math.sqrt(3);
   const ang = (k) => Math.PI/2 + k*2*Math.PI/3;
   const t = (k, z) => [r*Math.cos(ang(k)), r*Math.sin(ang(k)), z];
@@ -143,9 +145,10 @@ function triPrism(a, hExpr) {
     kind: 'tri-prism', points: P, base: ['A','B','C'], top: ["A'","B'","C'"],
     solidEdges: [['A','B'],['B','C'],["A'","B'"],["B'","C'"],["C'","A'"],['A',"A'"],['B',"B'"]],
     dashedEdges: [['C','A'],['C',"C'"]],
-    faces: [['A','B','C'], ["A'","B'","C'"]],
+    faces: [['A','B','C'], ["A'","B'","C'"], ['A','B',"B'","A'"], ['B','C',"C'","B'"], ['C','A',"A'","C'"]],
     labels: { A:[-0.3,-0.1,0], B:[0.3,-0.1,0], C:[0,-0.1,0.35], "A'":[-0.3,0.2,0], "B'":[0.3,0.2,0], "C'":[0,0.2,0.35] },
     title: 'Lăng trụ ABC.A′B′C′', meta: 'Oxyz',
+    assumptions: hExpr ? [] : ['Chưa có chiều cao lăng trụ; hình sơ đồ dùng h = 1.3a.'],
   };
 }
 function obliquePrismCircum(a, aaExpr) {
@@ -166,7 +169,7 @@ function obliquePrismCircum(a, aaExpr) {
     apex: "A'", footOfApex: 'O',
     solidEdges: [['A','B'],['B','C'],['A',"A'"],['B',"B'"],['C',"C'"],["A'","B'"],["B'","C'"]],
     dashedEdges: [['C','A'],["C'","A'"]],
-    faces: [['A','B','C'], ["A'","B'","C'"]],
+    faces: [['A','B','C'], ["A'","B'","C'"], ['A','B',"B'","A'"], ['B','C',"C'","B'"], ['C','A',"A'","C'"]],
     labels: { A:[-0.05,0.3,0], B:[-0.32,-0.14,0], C:[0.32,-0.14,0],
               "A'":[-0.05,0.32,0.08], "B'":[-0.34,0.14,0.08], "C'":[0.34,0.14,0.08], O:[0.14,-0.14,0] },
     title: 'Lăng trụ xiên ABC.A′B′C′', meta: 'Oxyz [O = tâm đáy]',
@@ -182,7 +185,7 @@ function cube(a) {
     solidEdges: [['A','B'],['B','C'],['A',"A'"],['B',"B'"],['C',"C'"],
                  ["A'","B'"],["B'","C'"],["C'","D'"],["D'","A'"]],
     dashedEdges: [['C','D'],['D','A'],['D',"D'"]],
-    faces: [['A','B','C','D'], ["A'","B'","C'","D'"]],
+    faces: [['A','B','C','D'], ["A'","B'","C'","D'"], ['A','B',"B'","A'"], ['B','C',"C'","B'"], ['C','D',"D'","C'"], ['D','A',"A'","D'"]],
     labels: { A:[-0.25,-0.1,-0.25], B:[0.28,-0.1,-0.2], C:[0.28,-0.1,0.28], D:[-0.25,-0.1,0.28],
               "A'":[-0.25,0.25,-0.2], "B'":[0.28,0.25,-0.2], "C'":[0.28,0.25,0.25], "D'":[-0.25,0.25,0.25] },
     title: 'Lập phương ABCD.A′B′C′D′', meta: 'Oxyz [A = Gốc]',
@@ -194,6 +197,7 @@ function box(a, b, c) {
     "A'":[0,0,c], "B'":[a,0,c], "C'":[a,b,c], "D'":[0,b,c],
   };
   const t = cube(a); t.points = P; t.kind = 'box'; t.title = 'Hộp chữ nhật ABCD.A′B′C′D′';
+  t.assumptions = ['Chưa trích đủ ba kích thước hộp; tỉ lệ hình sơ đồ được ước lượng.'];
   return t;
 }
 
@@ -207,8 +211,10 @@ function solveAngleLineBase(F, line) {
   if (!P[x] || !P[y]) return null;
   // điểm nằm trên đáy là chân, điểm còn lại là đỉnh của tia
   const onBase = (n) => F.base.includes(n) || Math.abs(P[n][2]) < EPS;
+  if (onBase(x) === onBase(y)) return null;
   let apex = x, baseP = y;
   if (onBase(x) && !onBase(y)) { apex = y; baseP = x; }
+  if (F.apex && apex !== F.apex) return null;
   const foot = F.footOfApex ? P[F.footOfApex] : [P[apex][0], P[apex][1], 0];
   // góc tại baseP giữa tia tới apex và tia tới foot (hình chiếu)
   const u = normalize(sub(P[apex], P[baseP]));
@@ -341,17 +347,21 @@ function circle(c, R, u, v, n = 48) {
 }
 const EX = [1,0,0], EY = [0,1,0], EZ = [0,0,1];
 
-function regQuadPyramid(a, hExpr) {
+function regQuadPyramid(a, hExpr, lateralExpr) {
   // Chóp tứ giác đều S.ABCD: đáy vuông tâm O, S trên O.
-  const s = a / 2, h = lengthToNum(hExpr, a) || a * 1.2;
+  const s = a / 2;
+  const lateral = lateralExpr ? lengthToNum(lateralExpr, a) : null;
+  const h = hExpr ? lengthToNum(hExpr, a)
+    : lateral ? Math.sqrt(Math.max(lateral*lateral - a*a/2, 0)) : a * 1.2;
   const P = { A:[-s,-s,0], B:[s,-s,0], C:[s,s,0], D:[-s,s,0], S:[0,0,h], O:[0,0,0] };
   return {
     kind: 'reg-quad-pyramid', points: P, apex: 'S', footOfApex: 'O', base: ['A','B','C','D'],
     solidEdges: [['A','B'],['B','C'],['S','A'],['S','B'],['S','C']],
     dashedEdges: [['C','D'],['D','A'],['S','D']],
-    faces: [['A','B','C','D']],
+    faces: [['A','B','C','D'], ['S','A','B'], ['S','B','C'], ['S','C','D'], ['S','D','A']],
     labels: { A:[-0.28,-0.1,-0.28], B:[0.28,-0.1,-0.28], C:[0.28,-0.1,0.28], D:[-0.25,-0.1,0.28], S:[0,0.3,0], O:[0.14,-0.12,0.1] },
     title: 'Chóp tứ giác đều S.ABCD', meta: 'Oxyz [O = tâm đáy]',
+    assumptions: hExpr || lateralExpr ? [] : ['Chưa có SO/cạnh bên; hình sơ đồ dùng SO = 1.2a.'],
   };
 }
 function rhombusPyramid(a, hExpr, saPerp) {
@@ -363,7 +373,7 @@ function rhombusPyramid(a, hExpr, saPerp) {
     kind: 'rhombus-pyramid', points: P, apex: 'S', footOfApex: saPerp ? 'A' : 'O', base: ['A','B','C','D'],
     solidEdges: [['A','B'],['B','C'],['S','A'],['S','B'],['S','C']],
     dashedEdges: [['C','D'],['D','A'],['S','D']],
-    faces: [['A','B','C','D']],
+    faces: [['A','B','C','D'], ['S','A','B'], ['S','B','C'], ['S','C','D'], ['S','D','A']],
     labels: { A:[-0.3,-0.05,0], B:[0,-0.32,0], C:[0.3,-0.05,0], D:[0,0.3,0], S:[0,0.3,0.05], O:[0.14,0.12,0.1] },
     title: 'Chóp đáy hình thoi S.ABCD', meta: 'Oxyz [O = tâm đáy]',
   };
@@ -375,8 +385,10 @@ function hexPrism(a, hExpr) {
   const P = {};
   nm.forEach((n, k) => { const t = k * Math.PI / 3; P[n] = [a*Math.cos(t), a*Math.sin(t), 0]; P[n + "'"] = [a*Math.cos(t), a*Math.sin(t), h]; });
   const solid = [], dashed = [], labels = {};
+  const faces = [nm.slice(), nm.map((n) => n + "'")];
   nm.forEach((n, k) => {
     const nx = nm[(k+1)%6];
+    faces.push([n, nx, nx + "'", n + "'"]);
     const backSet = ['C','D','E'];
     (backSet.includes(n) && backSet.includes(nx) ? dashed : solid).push([n, nx]);
     (backSet.includes(n) && backSet.includes(nx) ? dashed : solid).push([n+"'", nx+"'"]);
@@ -387,8 +399,9 @@ function hexPrism(a, hExpr) {
   return {
     kind: 'hex-prism', points: P, base: nm.slice(), top: nm.map((n)=>n+"'"),
     solidEdges: solid, dashedEdges: dashed,
-    faces: [nm.slice(), nm.map((n)=>n+"'")], labels,
+    faces, labels,
     title: 'Lăng trụ lục giác đều', meta: 'Oxyz',
+    assumptions: hExpr ? [] : ['Chưa có chiều cao lăng trụ; mặt trên đặt ở cao độ a.'],
   };
 }
 function cone(a, hExpr) {
@@ -401,6 +414,7 @@ function cone(a, hExpr) {
     curves: [circle([0,0,0], R, EX, EY)],
     labels: { O:[0.1,-0.12,0.1], S:[0,0.3,0], A:[0.2,-0.1,0], B:[-0.2,-0.1,0] },
     title: 'Hình nón', meta: 'Oxyz [O = tâm đáy]',
+    assumptions: hExpr ? [] : ['Chưa có chiều cao; hình sơ đồ dùng h = a.'],
   };
 }
 function cylinder(a, hExpr) {
@@ -413,6 +427,7 @@ function cylinder(a, hExpr) {
     curves: [circle([0,0,h], R, EX, EY)], curvesDashed: [circle([0,0,0], R, EX, EY)],
     labels: { O:[0.12,-0.12,0], "O'":[0.12,0.2,0], A:[0.18,-0.1,0], "A'":[0.18,0.15,0] },
     title: 'Hình trụ', meta: 'Oxyz',
+    assumptions: hExpr ? [] : ['Chưa có chiều cao; hình sơ đồ dùng h = a.'],
   };
 }
 function sphere(a) {
@@ -540,8 +555,9 @@ function derivePoints(t, basePoints) {
 
 function detectFigure(t) {
   const s = t.toLowerCase();
-  const aMatch = s.match(/cạnh(?:\s*đáy)?\s*(?:bằng|là|=)?\s*([0-9]*a(?:√\d+)?)/);
-  const a = A_UNIT;
+  const aMatch = s.match(/cạnh(?:\s*đáy)?\s*(?:bằng|là|=)?\s*([0-9]*a(?:√\d+)?|a(?:√\d+)?|\d+(?:\.\d+)?(?:√\d+)?)/);
+  const aValue = s.match(/(?:^|\s)a\s*=\s*(\d+(?:\.\d+)?)(?:\s|$)/);
+  const a = aValue ? Number(aValue[1]) : aMatch ? lengthToNum(aMatch[1], A_UNIT) : A_UNIT;
 
   // ===== 2D (cấp 2): hình phẳng, KHÔNG có ngữ cảnh không gian =====
   const is3D = /ch[oó]p|l[aă]ng\s*tr[uụ]|t[uứ]\s*di[eệ]n|h[oộ]p|l[aậ]p\s*ph[uươ]ng|h[iì]nh\s*n[oó]n|h[iì]nh\s*tr[uụ]|h[iì]nh\s*c[aầ]u|m[aặ]t\s*ph[aẳ]ng|kh[oô]ng\s*gian|đ[uư]ờng\s*cao\s*s[a-d]/.test(s);
@@ -573,32 +589,47 @@ function detectFigure(t) {
     const oblique = /h[iì]nh\s*chi[eế]u[^.]*?(t[aâ]m|tr[oọ]ng\s*t[aâ]m|ngo[aạ]i\s*ti[eế]p)/.test(s)
                  || /chi[eế]u[^.]*?\btr[uù]ng[^.]*?\bo\b/.test(s);
     if (oblique) {
-      const aa = s.match(/aa'?\s*=\s*([0-9]*a(?:√\d+)?)/) || s.match(/c[aạ]nh[^.=]*=\s*([0-9]*a√?\d*)/);
-      return obliquePrismCircum(a, aa ? aa[1] : 'a√2');
+      const aa = s.match(/aa'?\s*=\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/);
+      if (!/tam\s*giác\s*đều/.test(s) || !aa) return null;
+      return obliquePrismCircum(a, aa[1]);
     }
+    if (!/lăng\s*trụ\s*đứng/.test(s) || !/tam\s*giác\s*đều/.test(s)) return null;
     const hM = s.match(/(?:chiều\s*cao|cạnh\s*bên)\s*(?:bằng|là|=)?\s*([0-9]*a(?:√\d+)?|[0-9.]+)/);
-    return triPrism(a, hM ? hM[1] : '1.3a');
+    return triPrism(a, hM ? hM[1] : null);
   }
   if (/t[uứ]\s*di[eệ]n/.test(s)) return tetrahedron(a);
   if (/s\.abc\b/.test(s) || (/tam\s*giác/.test(s) && /chóp/.test(s))) {
-    // Chóp S.ABC có SA ⊥ đáy + đáy vuông (cân) tại B -> builder SA⊥.
     const saPerp = /s\s*a\s*(?:vuông\s*góc|⊥)/.test(s) || /(?:vuông\s*góc|⊥)[^.]*\(abc\)/.test(s);
-    if (saPerp && /vuông\s*c[aâ]n|vuông\s*t[aạ]i/.test(s)) {
-      const leg = s.match(/[a-z]{2}\s*=\s*[a-z]{2}\s*=\s*([0-9]*a(?:√\d+)?)/) || s.match(/=\s*([0-9]+a)\b/);
-      const sa = s.match(/sa\s*(?:=|bằng)\s*([0-9]*a(?:√\d+)?)/);
-      const legLen = leg ? lengthToNum(leg[1], a) : 2 * a;
-      return saPerpTriPyramid(a, sa ? sa[1] : 'a', legLen, 'right-iso-B');
+    if (saPerp) {
+      if (!/vuông\s*c[aâ]n/.test(s)) return null;
+      const leg = s.match(/(?:ab|bc|ba|cb)\s*=\s*(?:bc|ab|cb|ba)\s*=\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/);
+      const sa = s.match(/sa\s*(?:=|bằng)\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/);
+      return saPerpTriPyramid(a, sa ? sa[1] : null, leg ? lengthToNum(leg[1], a) : null, 'right-iso-B');
     }
-    const lat = s.match(/cạnh\s*bên\s*(?:bằng|là|=)?\s*([0-9]*a(?:√\d+)?)/);
+    if (!/ch[oó]p\s*đều/.test(s)) return null;
+    const lat = s.match(/cạnh\s*bên\s*(?:bằng|là|=)?\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/);
     return regTriPyramid(a, lat ? lat[1] : null);
   }
   if (/chóp|s\.abcd/.test(s)) {
-    const hM = s.match(/s\s*a?\s*(?:=|bằng)\s*([0-9]*a(?:√\d+)?)/) || s.match(/đường\s*cao\s*(?:=|bằng)?\s*([0-9]*a(?:√\d+)?)/);
-    const hExpr = hM ? hM[1] : 'a√2';
-    if (/thoi/.test(s)) return rhombusPyramid(a, hExpr, /s\s*a\s*(?:vuông\s*góc|⊥)/.test(s));
-    if (/t[uứ]\s*giác\s*đều/.test(s) || /ch[oó]p\s*đều/.test(s)) return regQuadPyramid(a, hExpr);
-    if (/chữ\s*nhật/.test(s)) return rectPyramid(a, a*0.65, hExpr);
-    return squarePyramid(a, hExpr); // mặc định đáy vuông
+    if (/thoi/.test(s)) return null; // builder chưa suy đường chéo từ dữ kiện đề
+    const regular = /t[uứ]\s*giác\s*đều/.test(s) || /ch[oó]p\s*đều/.test(s);
+    if (regular) {
+      const hM = s.match(/(?:s\s*o|(?:chiều|đường)\s*cao)\s*(?:=|bằng)?\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/);
+      const lM = s.match(/(?:cạnh\s*bên\s*(?:bằng|là|=)?|s\s*a\s*(?:=|bằng))\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/);
+      if (lM && lengthToNum(lM[1], a) + EPS < a / Math.sqrt(2)) return null;
+      if (hM && lM) {
+        const h = lengthToNum(hM[1], a), side = lengthToNum(lM[1], a);
+        if (Math.abs(side*side - (h*h + a*a/2)) > 1e-3 * Math.max(side*side, 1)) return null;
+      }
+      return regQuadPyramid(a, hM ? hM[1] : null, lM ? lM[1] : null);
+    }
+    if (/chữ\s*nhật/.test(s)) return null; // chưa trích đủ hai cạnh đáy
+    const squareBase = /đáy[^.]*?(?:hình\s*)?vuông|hình\s*vuông\s*abcd|abcd[^.]*hình\s*vuông/.test(s);
+    const saPerp = /s\s*a\s*(?:vuông\s*góc|⊥)[^.]*?(?:đáy|\(abcd\))/i.test(s);
+    if (!squareBase || !saPerp) return null;
+    const hM = s.match(/s\s*a\s*(?:=|bằng)\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/)
+      || s.match(/(?:đường\s*cao|chiều\s*cao)\s*(?:=|bằng)?\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/);
+    return squarePyramid(a, hM ? hM[1] : null);
   }
   return null;
 }
@@ -671,6 +702,7 @@ function buildEntities(F, Q) {
   ents.push({ label: 'Khối', value: F.title.replace(/^.*?\s/, '') || F.title, detail: `${F.kind}`, tone: 'slate' });
   if (F.base) ents.push({ label: `Đáy ${baseName}`, value: F.top ? 'Lăng trụ/khối' : 'Đa giác đáy', detail: pointStr(F, F.base), tone: 'slate' });
   if (F.apex) ents.push({ label: 'Đỉnh', value: `${F.apex}`, detail: `${F.apex}${coordStr(F.points[F.apex])}`, tone: 'slate' });
+  (F.assumptions || []).forEach((text) => ents.push({ label: 'Giả định sơ đồ', value: 'Chưa phải dữ kiện đề', detail: text, tone: 'amber' }));
   Q.layers.forEach((L) => {
     const tone = L.color === 'cyan' ? 'amber' : 'blue';
     ents.push({ label: L.name.split(' ')[0] + '…', value: L._deg != null ? formatDeg(L._deg) : '3D', detail: L.name, tone });
@@ -716,6 +748,24 @@ export function solveProblem(text) {
   const der = parseDerivedPoints(t, F);
   const working = { ...F.points, ...der.points };
   const Q = detectQuestions(t, F, working);
+
+  // Avoid claiming success when a recognized solid still has unanswered parts.
+  // Route the whole prompt to the AI parser/solver instead.
+  const unsupportedTask = /ch[uứ]ng\s*minh|di[eệ]n\s*t[ií]ch|th[eể]\s*t[ií]ch|đ[oộ]\s*d[aà]i|t[oọ]a\s*đ[oộ]|giao\s*đi[eể]m|h[iì]nh\s*chi[eế]u|ti[eế]p\s*tuy[eế]n/i.test(t);
+  const sectionRequests = (t.match(/thi[eế]t\s*di[eệ]n/g) || []).length;
+  const sectionResults = Q.layers.filter((L) => L.key === 'section').length;
+  const angleRequests = (t.match(/g[oó]c\s+(?:gi[uữ]a|c[uủ]a)\s+[A-Z]'?[A-Z]'?/gi) || []).length;
+  const angleResults = Q.layers.filter((L) => L.key.startsWith('angle')).length;
+  if (unsupportedTask || sectionRequests > sectionResults || angleRequests > angleResults) {
+    return { ok: false, reason: 'unparsed-question' };
+  }
+  if (F.assumptions?.length && (Q.layers.length || Q.distance)) {
+    return { ok: false, reason: 'assumptions-needed', assumptions: F.assumptions };
+  }
+  const hasQuestionIntent = /(?:t[ií]nh|t[iì]m|x[aá]c\s*đ[iị]nh|d[uự]ng|v[eẽ]|g[oó]c|thi[eế]t\s*di[eệ]n|kho[aả]ng\s*c[aá]ch)\b/i.test(t);
+  if (hasQuestionIntent && Q.layers.length === 0 && !Q.distance) {
+    return { ok: false, reason: 'unparsed-question' };
+  }
 
   const points = { ...working, ...Q.newPoints };
   Object.keys(points).forEach((k) => (points[k] = r4(points[k])));
@@ -780,7 +830,7 @@ export function solveProblem(text) {
   const spec = {
     title: F.title, meta: F.meta || 'Oxyz', dim2d: F.dim2d || false,
     points, solidEdges: F.solidEdges, dashedEdges: F.dashedEdges, faces: F.faces,
-    labels, entities, steps, layers, defaultLayers,
+    labels, entities, steps, layers, defaultLayers, assumptions: F.assumptions || [],
     construction: constructionClean.length ? constructionClean : construction, source: 'kernel',
   };
   return { ok: true, kind: F.kind, spec };

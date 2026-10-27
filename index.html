@@ -295,7 +295,7 @@ b) Thiết diện (P) qua A và ⊥ SC.</textarea>
                     <svg class="h-4 w-4 text-cyan-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v20M2 12h20"/></svg>
                     Thực thể toạ độ
                   </h2>
-                  <span class="rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600 ring-1 ring-emerald-100">Chuẩn 100%</span>
+                  <span class="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">Mô hình sơ đồ</span>
                 </div>
                 <div id="entityList" class="flex flex-col gap-2.5">
                   <!-- rendered from scene spec by geometry3d.js -->
@@ -338,6 +338,13 @@ b) Thiết diện (P) qua A và ⊥ SC.</textarea>
                     <p class="mt-4 text-sm font-medium text-slate-300">Khung canvas Three.js</p>
                     <p class="mt-1 text-xs text-slate-500">Khối 3D sẽ dựng tại đây sau khi bóc tách đề (Phase 2)</p>
                   </div>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2 border-t border-slate-200 bg-slate-50 px-4 py-2.5">
+                  <span class="mr-auto text-xs text-slate-500">Xoay: kéo chuột · Zoom: lăn chuột · Có thể ghi chú trực tiếp lên hình</span>
+                  <button id="annotateToggle" type="button" aria-pressed="false" class="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100">✎ Vẽ thêm</button>
+                  <button id="annotateUndo" type="button" class="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100">Hoàn tác</button>
+                  <button id="annotateClear" type="button" class="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100">Xóa nét</button>
                 </div>
 
                 <!-- layer toggles -->

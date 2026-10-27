@@ -8,6 +8,16 @@ SYSTEM_PROMPT = r"""Bạn là một chuyên gia hình học không gian THPT Vi�
 Nhiệm vụ: đọc một đề toán hình không gian và trả về DUY NHẤT một object JSON mô tả
 mô hình 3D để dựng bằng Three.js. KHÔNG kèm lời giải thích, KHÔNG markdown, chỉ JSON.
 
+ĐỘ TIN CẬY:
+- Trước khi đặt tọa độ, trích đủ mọi dữ kiện và mọi ý hỏi (a, b, c...). Không được bỏ ý.
+- Không tự giả định đáy đều/vuông, cạnh bằng nhau, chân đường cao, hay độ dài nếu đề không nói.
+- Không bịa tọa độ để lấp dữ kiện thiếu. Nếu vị trí/đáp án cần tìm không xác định duy nhất,
+  ghi rõ vào "unresolved"; có thể dựng phần khung chắc chắn nhưng không gắn đáp số đoán.
+- Liệt kê mọi quy ước chỉ dùng để minh họa (ví dụ chọn a=2.4) trong "assumptions".
+- Ghi vào "constraints" các quan hệ được nêu rõ trong đề; không tự suy ra quan hệ.
+- "perpendicular" và "parallel" dùng hai đoạn trong "segments" làm vector chỉ phương.
+- Nếu đề mâu thuẫn, ghi mâu thuẫn trong "unresolved" và không dựng các lớp kết luận sai.
+
 QUY ƯỚC TOẠ ĐỘ:
 - Dùng hệ Oxyz, đơn vị quy ước (chọn cạnh gốc a ≈ 2.4). z là chiều cao.
 - Tính TOẠ ĐỘ SỐ cho MỌI điểm, kể cả điểm phụ (chân đường vuông góc, giao điểm,
@@ -22,13 +32,23 @@ SCHEMA JSON (bắt buộc đúng khoá):
   "solidEdges": [["A","B"], ...],  // cạnh nét liền
   "dashedEdges": [["C","D"], ...], // cạnh khuất nét đứt
   "faces": [["A","B","C","D"], ...], // mặt tô mờ (đa giác lồi, đúng thứ tự đỉnh)
+  "curves": [[[x,y,z], ...], ...],       // polyline các đường cong nhìn thấy
+  "curvesDashed": [[[x,y,z], ...], ...], // polyline phần đường cong khuất
   "labels": { "A":[dx,dy,dz], ... }, // offset nhãn cho CÁC đỉnh cần hiện tên
   "entities": [ {"label":str,"value":str,"detail":str,"tone":"slate|amber|blue"} ],
   "steps":    [ {"title":str,"body":str,"tone":"amber|blue"} ],
+  "assumptions": [string],       // giả định chỉ phục vụ minh họa; [] nếu không có
+  "unresolved": [string],        // dữ kiện thiếu/mâu thuẫn; [] nếu đủ xác định
+  "constraints": [               // các quan hệ trích từ đề để kiểm tra tọa độ
+    {"type":"perpendicular|parallel|equal_length","segments":[["A","B"],["C","D"]]},
+    {"type":"midpoint","point":"M","segment":["A","B"]},
+    {"type":"coplanar","points":["A","B","C","D"]}
+  ],
   "layers": [ {
      "key": str, "name": str, "color": "cyan|magenta|amber|blue|emerald|rose",
      "points": [tên điểm phụ cần hiện nhãn],
      "faces": [[...]], "solidEdges": [[...]], "dashedEdges": [[...]],
+     "curves": [[[x,y,z], ...], ...], "curvesDashed": [[[x,y,z], ...], ...],
      "angles": [ {"at":str,"from":str,"to":str,"label":str} ],
      "rightAngles": [ {"at":str,"from":str,"to":str} ]
   } ],
@@ -36,6 +56,9 @@ SCHEMA JSON (bắt buộc đúng khoá):
 }
 
 - Mỗi câu hỏi (a, b, c...) tạo một layer riêng với màu khác nhau.
+- Nếu đề có nhãn a), b), c)... tên layer tương ứng phải bắt đầu bằng "Câu a", "Câu b"...
+- Scene phải bao phủ toàn bộ khối: mọi đỉnh, cạnh, mặt và đường cong cần cho đề; không chỉ vẽ mặt đáy.
+- Hình tròn xoay dùng "curves"/"curvesDashed" là các polyline tọa độ [x,y,z], tối thiểu 24 mẫu mỗi đường.
 - angles: cung đánh dấu góc tại đỉnh "at" giữa hai tia tới "from" và "to".
 - rightAngles: ô vuông góc vuông tại "at" giữa hai tia "from" và "to".
 - entities/steps viết bằng tiếng Việt, ngắn gọn, đúng chuẩn trình bày thi THPT.
@@ -113,6 +136,14 @@ SOLVE_SYSTEM = r"""Bạn là giáo viên Toán giỏi (cấp 2 & THPT). Giải C
 (hình học phẳng / không gian / giải tích / đại số...). Trình bày theo CÁC BƯỚC như bài
 giải mẫu, có lập luận + công thức (ký hiệu √, ², ∫, ⊥, ∠, ⇒...).
 
+ĐỌC ĐỦ ĐỀ VÀ TỰ SOÁT:
+- Liệt kê và trả lời lần lượt TẤT CẢ ý hỏi a), b), c)...; không bỏ câu hỏi phụ.
+- Với đề chia ý a), b), c)... ít nhất một tiêu đề bước cho mỗi ý phải bắt đầu bằng "Câu a", "Câu b"...
+- Chỉ dùng giả thiết có trong đề và các hệ quả chứng minh được. Nếu thiếu dữ kiện hoặc
+  có nhiều đáp số, nói rõ điều đó và không tự chọn một trường hợp.
+- Với kết quả số, ghi công thức, phép thế, đơn vị và kiểm tra ngược điều kiện đề.
+- Kiểm tra tên điểm/đường/mặt nhất quán với danh sách điểm được cung cấp.
+
 QUAN TRỌNG — VẼ THÊM VÀO HÌNH:
 Bạn được cung cấp DANH SÁCH ĐIỂM đã có (tên + toạ độ trong hệ đã dựng). Khi lời giải
 cần KẺ THÊM đường hoặc LẤY THÊM điểm (đường cao, trung tuyến, hình chiếu, giao điểm,
@@ -137,7 +168,28 @@ Chỉ tạo điểm mới khi THỰC SỰ cần; ưu tiên dùng điểm đã c�
 
 SOLVE_USER = ("Giải chi tiết đề sau và trả JSON (nếu cần vẽ thêm thì điền \"draw\").\n"
               "Các điểm đã có (tên: toạ độ): {points}\n"
+              "Các ràng buộc đã trích từ đề: {constraints}\n"
               "Đề bài:\n\"\"\"{problem}\"\"\"")
+
+VERIFY_SOLVE_SYSTEM = r"""Bạn là giám khảo độc lập. TỰ GIẢI LẠI đề từ đầu; không mặc định lời giải nháp đúng.
+Đối chiếu từng ý hỏi, giả thiết, phép tính, kết luận và mọi điểm/đoạn được vẽ thêm.
+- Với đề có nhãn a), b), c)... phải có tiêu đề bước bắt đầu "Câu a", "Câu b"... cho từng ý.
+- Nếu nháp đúng đầy đủ, trả status="verified".
+- Nếu sai hoặc thiếu, tự sửa toàn bộ lời giải và trả status="corrected".
+- Nếu đề thiếu dữ kiện, mâu thuẫn, hoặc không thể xác minh chắc chắn, trả status="uncertain",
+  nêu rõ phần chưa xác minh trong issues và không khẳng định đáp số.
+- Chỉ dùng dữ kiện đề và tọa độ đã cho; kiểm tra các tọa độ mới có thỏa quan hệ hình học.
+Trả duy nhất JSON đúng schema:
+{"status":"verified|corrected|uncertain","issues":[string],
+ "solution":[{"title":string,"body":string,"draw":{"points":{},"segments":[],"dashed":[],"labels":{}}}],
+ "answer":string}
+Nếu status=uncertain, answer phải nêu rõ chưa đủ căn cứ; không được bịa đáp số."""
+
+VERIFY_SOLVE_USER = ("Đề bài:\n\"\"\"{problem}\"\"\"\n"
+                     "Tọa độ nền (JSON): {points}\n"
+                     "Các ràng buộc đã trích từ đề: {constraints}\n"
+                     "Lời giải cần kiểm tra (JSON): {candidate}\n"
+                     "Hãy giải độc lập, kiểm tra đủ mọi ý, rồi trả schema được yêu cầu.")
 
 # ---- SNAP TO LATEX (ảnh công thức -> mã LaTeX) ----
 LATEX_SYSTEM = r"""Bạn là công cụ OCR công thức Toán sang LaTeX. Đọc ảnh (công thức viết tay,
@@ -167,7 +219,7 @@ ONE_SHOT_JSON = r"""{
   },
   "solidEdges": [["A","B"],["B","C"],["S","A"],["S","B"],["S","C"]],
   "dashedEdges": [["C","D"],["D","A"],["S","D"]],
-  "faces": [["A","B","C","D"]],
+  "faces": [["A","B","C","D"],["S","A","B"],["S","B","C"],["S","C","D"],["S","D","A"]],
   "labels": {"A":[-0.28,-0.1,-0.28],"B":[0.28,-0.1,-0.28],"C":[0.28,-0.1,0.28],"D":[-0.25,-0.1,0.28],"S":[0,0.3,0]},
   "entities": [
     {"label":"Đáy ABCD","value":"Vuông cạnh a","detail":"A(0,0,0) → C(a,a,0)","tone":"slate"},
@@ -180,13 +232,19 @@ ONE_SHOT_JSON = r"""{
     {"title":"Tính ∠SCA","body":"AC = a√2; tam giác SAC vuông cân tại A ⇒ ∠SCA = 45°.","tone":"blue"},
     {"title":"Thiết diện (P) ⊥ SC","body":"Hạ AH ⊥ SC, qua H kẻ // BD cắt SB, SD tại M, N ⇒ AMHN.","tone":"blue"}
   ],
+  "assumptions": [], "unresolved": [],
+  "constraints": [
+    {"type":"perpendicular","segments":[["S","A"],["A","B"]]},
+    {"type":"perpendicular","segments":[["S","C"],["A","H"]]},
+    {"type":"equal_length","segments":[["A","B"],["B","C"]]},
+    {"type":"coplanar","points":["A","B","C","D"]}
+  ],
   "layers": [
     {"key":"a","name":"Câu a · Góc ∠SCA","color":"cyan","faces":[["A","C","S"]],
      "dashedEdges":[["A","C"]],"angles":[{"at":"C","from":"A","to":"S","label":"45°"}],
      "rightAngles":[{"at":"A","from":"C","to":"S"}]},
     {"key":"b","name":"Câu b · Thiết diện (P)","color":"magenta","points":["M","H","N"],
-     "faces":[["A","M","H","N"]],"dashedEdges":[["A","H"]],
-     "rightAngles":[{"at":"H","from":"A","to":"M"}]},
+     "faces":[["A","M","H","N"]],"dashedEdges":[["A","H"]]},
     {"key":"mp","name":"Mặt chéo (SBD)","color":"amber","points":["O"],
      "faces":[["S","B","D"]],"dashedEdges":[["B","D"]],"solidEdges":[["S","O"]]}
   ],

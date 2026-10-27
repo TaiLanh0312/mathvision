@@ -12,6 +12,7 @@ import base64
 from prompts import (SYSTEM_PROMPT, USER_TEMPLATE, ONE_SHOT_PROBLEM, ONE_SHOT_JSON,
                      GRAPH_SYSTEM, GRAPH_USER, SOLUTION_SYSTEM, SOLUTION_USER,
                      OCR_SYSTEM, OCR_USER, SOLVE_SYSTEM, SOLVE_USER,
+                     VERIFY_SOLVE_SYSTEM, VERIFY_SOLVE_USER,
                      LATEX_SYSTEM, LATEX_USER)
 
 try:  # SDK mới, hỗ trợ tắt thinking + nhanh
@@ -125,6 +126,17 @@ def _text_json(system: str, user: str, max_tokens: int = 4096) -> dict | None:
     return _extract_json(resp.text)
 
 
-def solve_detailed(problem: str, points: dict | None = None) -> dict | None:
+def solve_detailed(problem: str, points: dict | None = None, constraints: list | None = None) -> dict | None:
     pts = json.dumps(points or {}, ensure_ascii=False)
-    return _text_json(SOLVE_SYSTEM, SOLVE_USER.format(problem=problem, points=pts))
+    rels = json.dumps(constraints or [], ensure_ascii=False)
+    return _text_json(SOLVE_SYSTEM, SOLVE_USER.format(problem=problem, points=pts, constraints=rels))
+
+
+def verify_detailed(problem: str, points: dict | None, constraints: list | None, candidate: dict) -> dict | None:
+    """Use a separate model turn to re-solve and correct the proposed answer."""
+    pts = json.dumps(points or {}, ensure_ascii=False)
+    rels = json.dumps(constraints or [], ensure_ascii=False)
+    draft = json.dumps(candidate or {}, ensure_ascii=False)
+    return _text_json(VERIFY_SOLVE_SYSTEM,
+                      VERIFY_SOLVE_USER.format(problem=problem, points=pts, constraints=rels, candidate=draft),
+                      max_tokens=6144)

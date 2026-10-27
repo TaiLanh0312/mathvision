@@ -39,7 +39,6 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
-import { solveProblem, extractDerived } from './geokernel.js';
 
 const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const API_BASE = ''; // same origin (FastAPI serves this frontend)
@@ -132,7 +131,9 @@ const SAMPLES = { pyramid: samplePyramid, prism: samplePrism };
 /* ============================================================
    Engine state
    ============================================================ */
-let renderer, scene, camera, controls, host;
+let renderer, scene, camera, controls, host, annotationSvg;
+let annotationOn = false, activeStroke = null;
+let geometryRequestId = 0;
 let lineMaterials = [];
 let stepGroups = [];          // [{group, mats:[{m,base,structural}], title, body}]
 let structuralFaceMats = [];  // mặt khối (chịu điều khiển "độ mờ mặt")
@@ -156,6 +157,37 @@ function init() {
   renderer.setClearColor(0x0b1120, 1);
   Object.assign(renderer.domElement.style, { width: '100%', height: '100%', display: 'block' });
   host.appendChild(renderer.domElement);
+
+  annotationSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  annotationSvg.setAttribute('aria-label', 'Nét ghi chú trên hình');
+  Object.assign(annotationSvg.style, {
+    position: 'absolute', inset: '0', width: '100%', height: '100%', zIndex: '2',
+    pointerEvents: 'none', touchAction: 'none', overflow: 'hidden',
+  });
+  host.appendChild(annotationSvg);
+  const drawPoint = (e) => {
+    const r = annotationSvg.getBoundingClientRect();
+    return [e.clientX - r.left, e.clientY - r.top];
+  };
+  annotationSvg.addEventListener('pointerdown', (e) => {
+    if (!annotationOn) return;
+    e.preventDefault(); annotationSvg.setPointerCapture(e.pointerId);
+    const [x, y] = drawPoint(e);
+    activeStroke = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    activeStroke.setAttribute('d', `M ${x} ${y}`);
+    activeStroke.setAttribute('fill', 'none'); activeStroke.setAttribute('stroke', '#fbbf24');
+    activeStroke.setAttribute('stroke-width', '3'); activeStroke.setAttribute('stroke-linecap', 'round');
+    activeStroke.setAttribute('stroke-linejoin', 'round');
+    annotationSvg.appendChild(activeStroke);
+  });
+  annotationSvg.addEventListener('pointermove', (e) => {
+    if (!activeStroke) return;
+    const [x, y] = drawPoint(e);
+    activeStroke.setAttribute('d', `${activeStroke.getAttribute('d')} L ${x} ${y}`);
+  });
+  const finishStroke = () => { activeStroke = null; };
+  annotationSvg.addEventListener('pointerup', finishStroke);
+  annotationSvg.addEventListener('pointercancel', finishStroke);
 
   scene = new THREE.Scene();
   scene.fog = new THREE.Fog(0x0b1120, 16, 30);
@@ -258,6 +290,16 @@ function makePointMarker(pos, name, offset) {
    ============================================================ */
 function buildFromSpec(spec) {
   if (!spec || !spec.points) return;
+  host?.querySelector('.v-empty')?.remove();
+  annotationOn = false;
+  if (controls) controls.enabled = true;
+  const annotateBtn = document.getElementById('annotateToggle');
+  if (annotateBtn) {
+    annotateBtn.setAttribute('aria-pressed', 'false');
+    annotateBtn.classList.remove('border-amber-400', 'bg-amber-50');
+    annotateBtn.textContent = '✎ Vẽ thêm';
+  }
+  clearAnnotations();
   currentSpec = spec;
   stopPlay();
 
@@ -362,7 +404,8 @@ function deriveConstruction(spec) {
     points: baseNames.filter((n) => labels[n] || true),
     solidEdges: (spec.solidEdges || []).filter(inBase),
     dashedEdges: (spec.dashedEdges || []).filter(inBase),
-    faces: (spec.faces || []).filter((f) => f.every((n) => baseNames.includes(n))) });
+    faces: (spec.faces || []).filter((f) => f.every((n) => baseNames.includes(n))),
+    curves: spec.curves || [], curvesDashed: spec.curvesDashed || [] });
   plan.push({ title: 'Dựng cạnh bên & đỉnh trên', body: 'Vẽ các đỉnh trên và cạnh bên.', color: 'solid',
     points: Object.keys(pts).filter((n) => !baseNames.includes(n)),
     solidEdges: (spec.solidEdges || []).filter((e) => !inBase(e)),
@@ -371,10 +414,12 @@ function deriveConstruction(spec) {
   (spec.layers || []).forEach((L) => plan.push({
     title: L.name, body: '', color: L.color, points: L.points,
     faces: L.faces, solidEdges: L.solidEdges, dashedEdges: L.dashedEdges,
+    curves: L.curves, curvesDashed: L.curvesDashed,
     angles: L.angles, rightAngles: L.rightAngles,
   }));
   return plan.filter((s) => (s.points && s.points.length) || (s.solidEdges && s.solidEdges.length)
     || (s.dashedEdges && s.dashedEdges.length) || (s.faces && s.faces.length)
+    || (s.curves && s.curves.length) || (s.curvesDashed && s.curvesDashed.length)
     || (s.angles && s.angles.length) || (s.rightAngles && s.rightAngles.length));
 }
 
@@ -616,67 +661,87 @@ function setStatus(msg, kind = 'info') {
 }
 function clearStatus() { const el = document.getElementById('buildStatus'); el && el.classList.add('hidden'); }
 
+function clearCurrentGeometry(message = 'Chưa có hình cho đề hiện tại.') {
+  stopPlay();
+  annotationOn = false; clearAnnotations();
+  if (controls) controls.enabled = true;
+  if (annotationSvg) { annotationSvg.style.pointerEvents = 'none'; annotationSvg.style.cursor = 'default'; }
+  const annotateBtn = document.getElementById('annotateToggle');
+  if (annotateBtn) {
+    annotateBtn.setAttribute('aria-pressed', 'false');
+    annotateBtn.classList.remove('border-amber-400', 'bg-amber-50');
+    annotateBtn.textContent = '✎ Vẽ thêm';
+  }
+  stepGroups.forEach((s) => disposeGroup(s.group));
+  Object.values(pointMarkers).forEach((pm) => disposeGroup(pm.group));
+  stepGroups = []; pointMarkers = {}; lineMaterials = []; structuralFaceMats = [];
+  currentSpec = null; currentStep = 0;
+  renderPointPanel(); renderEntities([]); renderStepList([]); renderSolution([]); buildStepPlayer(0); updateStepUI();
+  host?.querySelector('.v-empty')?.remove();
+  if (host) {
+    const empty = document.createElement('div');
+    empty.className = 'v-empty';
+    empty.textContent = message;
+    empty.style.cssText = 'position:absolute;inset:0;display:grid;place-items:center;padding:2rem;text-align:center;color:#94a3b8;font:500 13px Inter,sans-serif;pointer-events:none;z-index:1;';
+    host.appendChild(empty);
+  }
+}
+
 async function parseAndBuild() {
   const ta = document.querySelector('#tab-studio textarea');
   const problem = (ta?.value || '').trim();
   if (!problem) { setStatus('Hãy nhập đề bài trước khi dựng hình.', 'warn'); return; }
-
-  // 1) KERNEL NỘI BỘ — tức thì, không mạng.
-  const t0 = performance.now();
-  let solved;
-  try { solved = solveProblem(problem); } catch (e) { solved = { ok: false, reason: e.message }; }
-  if (solved && solved.ok) {
-    buildFromSpec(solved.spec);
-    const ms = Math.max(1, Math.round(performance.now() - t0));
-    setStatus(`⚡ Dựng tức thì bằng kernel nội bộ · ${ms}ms`, 'ok');
-    fetchDetailedSolution(problem);   // lời giải chi tiết (AI, nền)
-    return;
-  }
-
-  // 2) FALLBACK AI — chỉ khi kernel chưa nhận diện được hình.
-  setStatus('Hình chưa có mẫu kernel — đang nhờ AI phân tích…', 'info');
+  const requestId = ++geometryRequestId;
+  clearCurrentGeometry('AI đang đọc toàn bộ đề và dựng hình…');
+  setStatus('AI đang đọc toàn bộ đề, dựng hình và kiểm tra dữ kiện…', 'info');
   busy(true);
   try {
     const res = await fetch(`${API_BASE}/api/geometry/parse`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ problem }),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
+    if (requestId !== geometryRequestId) return;
+    if (!res.ok) {
+      const detail = [...(data.details || []), ...(data.unresolved || [])].join(' · ');
+      throw new Error([data.error || `HTTP ${res.status}`, detail].filter(Boolean).join(' '));
+    }
     if (data.error) throw new Error(data.error);
     buildFromSpec(data);
-    setStatus(`✓ Đã dựng "${data.title || 'mô hình'}" từ AI.` + (data.source === 'mock' ? ' (demo)' : ''), 'ok');
-    fetchDetailedSolution(problem);
+    const assumptions = Array.isArray(data.assumptions) && data.assumptions.length
+      ? ` Giả định minh họa: ${data.assumptions.join('; ')}.` : '';
+    setStatus(`✓ AI đã dựng "${data.title || 'mô hình'}"; cấu trúc hình đã qua kiểm tra.${assumptions}`, assumptions ? 'warn' : 'ok');
+    fetchDetailedSolution(problem, requestId);
   } catch (err) {
-    buildFromSpec(samplePyramid());
-    setStatus(`Không gọi được AI (${err.message}). Đang hiển thị bài mẫu.`, 'warn');
-  } finally { busy(false); }
+    if (requestId !== geometryRequestId) return;
+    clearCurrentGeometry('Chưa dựng được hình cho đề này. Kiểm tra backend và dữ kiện rồi thử lại.');
+    setStatus(`AI chưa thể dựng hình cho đề này: ${err.message}`, 'warn');
+  } finally { if (requestId === geometryRequestId) busy(false); }
 }
 
-async function fetchDetailedSolution(problem) {
+async function fetchDetailedSolution(problem, requestId) {
   const el = document.getElementById('solutionList'); if (!el || !currentSpec) return;
   const baseSpec = currentSpec;
   const figureConstr = (baseSpec.construction && baseSpec.construction.length)
     ? baseSpec.construction : deriveConstruction(baseSpec);
-  const fallback = baseSpec.steps || [];
-  el.innerHTML = '<li class="animate-pulse text-xs text-slate-400">Đang soạn lời giải chi tiết…</li>';
+  el.innerHTML = '<li class="animate-pulse text-xs text-slate-400">AI đang giải; một lượt kiểm tra độc lập sẽ soát đủ các ý và phép tính…</li>';
   try {
     const res = await fetch(`${API_BASE}/api/geometry/solve`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ problem, points: baseSpec.points }),
+      body: JSON.stringify({ problem, points: baseSpec.points, constraints: baseSpec.constraints || [] }),
     });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
     const d = await res.json();
-    if (d.error) throw new Error(d.error);
+    if (requestId !== geometryRequestId) return;
+    if (!res.ok || d.error) {
+      const detail = [...(d.details || []), ...(d.unresolved || [])].join(' · ');
+      throw new Error([d.error || `HTTP ${res.status}`, detail].filter(Boolean).join(' '));
+    }
 
     const sol = d.solution || [];
     const newPoints = {}, newLabels = {}, drawSteps = [], solMeta = [];
     sol.forEach((st) => {
       const dr = st.draw || {};
-      // (1) điểm/đoạn AI tự điền  + (2) điểm kernel TỰ TRÍCH từ chữ lời giải (chắc chắn)
-      let ex = {};
-      try { ex = extractDerived(`${st.title || ''} ${st.body || ''}`, { ...baseSpec.points, ...newPoints }).points || {}; } catch {}
-      const stepPoints = { ...(dr.points || {}), ...ex };
+      const stepPoints = dr.points || {};
       Object.assign(newPoints, stepPoints);
       Object.assign(newLabels, dr.labels || {});
       const segs = dr.segments || [], dash = dr.dashed || [];
@@ -691,7 +756,8 @@ async function fetchDetailedSolution(problem) {
         solMeta.push({ title: st.title, body: st.body, stepIndex: null });
       }
     });
-    if (d.answer) solMeta.push({ title: 'Đáp số', body: d.answer, stepIndex: null });
+    if (d.answer) solMeta.push({ title: d.status === 'uncertain' ? 'Chưa xác minh được đáp số' : 'Đáp số', body: d.answer, stepIndex: null });
+    if (d.issues?.length) solMeta.unshift({ title: 'AI kiểm tra độc lập', body: d.issues.join(' · '), stepIndex: null });
 
     if (drawSteps.length) {
       buildFromSpec({
@@ -702,15 +768,18 @@ async function fetchDetailedSolution(problem) {
         steps: solMeta.map((m) => ({ title: m.title, body: m.body })),
       });
     } else {
-      renderSolution(solMeta.length ? solMeta.map((m) => ({ title: m.title, body: m.body })) : fallback);
+      renderSolution(solMeta.length ? solMeta.map((m) => ({ title: m.title, body: m.body }))
+        : [{ title: 'AI kiểm tra độc lập', body: d.answer || 'Chưa có lời giải để hiển thị.' }]);
     }
     wireSolutionClicks(solMeta);
+    const reviewLabel = d.status === 'verified' ? 'AI thứ hai xác nhận lời giải.'
+      : d.status === 'corrected' ? 'AI kiểm tra phát hiện và đã sửa lời giải nháp.'
+        : 'AI chưa thể xác nhận chắc chắn lời giải.';
+    setStatus(reviewLabel, d.status === 'uncertain' ? 'warn' : 'ok');
   } catch (e) {
-    renderSolution(fallback);
-    const note = document.createElement('li');
-    note.className = 'text-xs text-amber-600';
-    note.textContent = 'Lời giải chi tiết cần backend + GEMINI_API_KEY (' + e.message + ').';
-    el.appendChild(note);
+    if (requestId !== geometryRequestId) return;
+    renderSolution([{ title: 'Chưa có lời giải đã kiểm chứng', body: e.message }]);
+    setStatus(`Hình đã dựng, nhưng AI chưa giải/kiểm tra được: ${e.message}`, 'warn');
   }
 }
 function wireSolutionClicks(solMeta) {
@@ -740,6 +809,21 @@ function busy(on) {
    Wire DOM controls
    ============================================================ */
 function wire() {
+  const annotate = document.getElementById('annotateToggle');
+  annotate && annotate.addEventListener('click', () => {
+    annotationOn = !annotationOn;
+    annotationSvg.style.pointerEvents = annotationOn ? 'auto' : 'none';
+    annotationSvg.style.cursor = annotationOn ? 'crosshair' : 'default';
+    annotate.setAttribute('aria-pressed', String(annotationOn));
+    annotate.classList.toggle('border-amber-400', annotationOn);
+    annotate.classList.toggle('bg-amber-50', annotationOn);
+    annotate.textContent = annotationOn ? '✓ Đang vẽ · bấm để xoay' : '✎ Vẽ thêm';
+    if (controls) controls.enabled = !annotationOn;
+  });
+  const undo = document.getElementById('annotateUndo');
+  undo && undo.addEventListener('click', () => annotationSvg?.lastElementChild?.remove());
+  const clear = document.getElementById('annotateClear');
+  clear && clear.addEventListener('click', clearAnnotations);
   // step player
   const prev = document.getElementById('stepPrev');
   prev && prev.addEventListener('click', () => stepBy(-1));
@@ -775,6 +859,10 @@ function wire() {
       busy(true);
       setTimeout(() => { buildFromSpec((SAMPLES[btn.dataset.scene] || samplePyramid)()); busy(false); }, REDUCED ? 0 : 320);
     }));
+}
+
+function clearAnnotations() {
+  if (annotationSvg) annotationSvg.replaceChildren();
 }
 
 function fullscreen() {

@@ -57,5 +57,6 @@ lần truy cập đầu sẽ chờ ~30s khởi động lại.)
 
 ## Kiểm tra sau khi publish
 - Mở `/<link>/api/health` → thấy `{"ok":true,"gemini":true}` là backend + khoá OK.
-- Dạng hình chuẩn vẫn dựng tức thì (kernel, không cần backend).
-- Chấm bài / OCR / lời giải chi tiết cần backend → test trên link.
+- Smart 3D gửi đề cho Gemini để dựng scene; phần lời giải dùng thêm một lượt Gemini để soát độc lập.
+- Nếu `gemini` là `false`, Smart 3D báo cần cấu hình `GEMINI_API_KEY` và không dùng hình mẫu thay đề thật.
+- Chấm bài / OCR cũng cần backend → kiểm tra trên link sau khi service khởi động.

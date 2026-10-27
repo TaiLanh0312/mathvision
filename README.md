@@ -1,7 +1,7 @@
 # MathVision PRO
 
 Web App thin-client cho giáo viên Toán THPT. Frontend siêu nhẹ (HTML + Vanilla JS +
-Tailwind CDN + Three.js), xử lý nặng đẩy lên backend Cloud (FastAPI + Gemini 1.5 Pro).
+Tailwind CDN + Three.js), xử lý hình học nặng đẩy lên backend (FastAPI + Gemini).
 
 ## Tính năng
 1. **Smart 3D Geometry** — dựng & bóc tách hình học không gian theo layer (Three.js).
@@ -27,39 +27,36 @@ uvicorn main:app --reload --port 8000
 
 Mở **http://localhost:8000** — backend phục vụ luôn frontend.
 
-- **Chưa cấu hình `GEMINI_API_KEY`** → nút "Dựng & Bóc Tách 3D" trả về **bài mẫu
-  offline** (chế độ demo) để toàn bộ luồng vẫn chạy.
-- **Đã cấu hình khoá** → đề bài được gửi lên Gemini 1.5 Pro, trả về JSON scene spec
-  và dựng hình thật.
+- Smart 3D cần `GEMINI_API_KEY`. Nếu thiếu khóa hoặc AI không trả được scene hợp lệ,
+  ứng dụng báo lỗi và không thay đề bằng hình mẫu.
 
-## Kiến trúc dựng hình: Kernel-first (nhanh < 50ms)
-Dựng hình KHÔNG phụ thuộc LLM. Thứ tự xử lý khi bấm "Dựng & Bóc Tách 3D":
+## Kiến trúc dựng hình và giải: AI-first, có kiểm tra
+Khi bấm "Dựng & Bóc Tách 3D":
 
-1. **Geometry Kernel nội bộ** (`geokernel.js`, chạy 100% trên trình duyệt) — parser
-   nhận diện loại hình + tham số + câu hỏi, rồi giải bằng đại số vector (toạ độ, điểm
-   phụ, thiết diện ⊥ đường, góc đường–mặt, mặt chéo). **Tức thì (~1ms), không gọi mạng.**
-   Hỗ trợ: chóp đáy vuông/chữ nhật (SA⊥đáy), chóp tam giác đều, lăng trụ tam giác đều,
-   lập phương, hộp chữ nhật.
-2. **AI tổng quát — Gemini flash-lite** (`/api/geometry/parse`) — gọi khi kernel chưa
-   nhận diện được hình. AI đọc hiểu đề BẤT KỲ và sinh scene spec. Dùng model
-   `gemini-flash-lite-latest` (KHÔNG "thinking") qua SDK `google-genai` nên ~2-4s.
-   (Lưu ý: model pro/thinking chậm 60-90s — tránh dùng.)
+1. Toàn bộ đề được gửi cho Gemini để trích các ý hỏi, dựng scene 3D, và liệt kê giả định
+   hoặc dữ kiện chưa xác định.
+2. Backend kiểm tra tham chiếu điểm, cạnh, mặt, đa giác, dấu vuông góc và các ràng buộc
+   hình học mà AI khai báo trước khi cho renderer nhận scene.
+3. Lời giải được tạo ở một lượt AI rồi một lượt khác giải lại độc lập. Nếu chưa xác nhận
+   được, giao diện đánh dấu chưa kiểm chứng; không dùng lời giải/hình mẫu thay thế.
 
 Tất cả đều trả về cùng một *scene spec* JSON khai báo (`points / solidEdges /
-dashedEdges / faces / layers / entities / steps`). `geometry3d.js` là renderer thuần —
-nhận spec và dựng. Kernel, AI và thư viện mẫu dùng chung một định dạng.
+dashedEdges / faces / curves / layers / entities / steps`). `geometry3d.js` là renderer
+độc lập với GeoGebra; nó nhận scene đã kiểm tra và dựng bằng Three.js.
 
-> Triết lý thin-client: dựng hình là toán vector nhẹ → làm ngay tại client cho nhanh.
-> Chỉ tác vụ thị giác nặng (chấm đồ thị, OCR LaTeX) mới đẩy lên Cloud.
+> Các kiểm tra hiện xác nhận cấu trúc scene và những ràng buộc AI đã khai báo; chúng chưa
+> phải bộ chứng minh hình học tổng quát. Với bài toán không xác định duy nhất, cần nêu rõ
+> dữ kiện thiếu thay vì xem hình minh họa là đáp án chính xác.
 
 ## Cấu trúc
 ```
 index.html, app.js                  # frontend shell (served by FastAPI)
 geometry3d.js                       # renderer Three.js (nhận scene spec)
-geokernel.js                        # BỘ GIẢI hình học client-side (nhanh < 50ms)
+geokernel.js                        # các bộ dựng/vector client-side cũ; Smart 3D hiện gửi AI trước
 backend/
-  main.py           # FastAPI app + static mount
-  gemini_client.py  # gọi Gemini 1.5 Pro
+  main.py           # FastAPI app + scene/solution validation + static mount
+  geometry_validation.py # kiểm tra topology, tọa độ và ràng buộc
+  gemini_client.py  # gọi Gemini để dựng và kiểm tra lời giải
   prompts.py        # system prompt + one-shot
   samples.py        # scene mock offline
   requirements.txt
