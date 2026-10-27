@@ -6,6 +6,8 @@ chưa cấu hình khoá (caller sẽ fallback mock).
 """
 import os
 import json
+import re
+import unicodedata
 
 import base64
 
@@ -26,6 +28,19 @@ except ImportError:  # pragma: no cover
 
 def is_configured() -> bool:
     return bool(os.getenv("GEMINI_API_KEY")) and genai is not None
+
+
+def _reasoning_level(problem: str) -> str:
+    """Use more reasoning for long, multi-part, or proof-heavy geometry prompts."""
+    text = unicodedata.normalize("NFD", (problem or "").lower().replace("đ", "d"))
+    text = "".join(char for char in text if unicodedata.category(char) != "Mn")
+    parts = re.findall(r"(?<![a-z0-9])([a-z])\)\s*\S", text)
+    hard_markers = (
+        "thiet dien", "khoang cach", "chung minh", "hinh chieu", "dong phang",
+        "vuong goc", "song song", "mat phang", "goc giua", "hsg", "dinh ly",
+    )
+    marker_count = sum(text.count(marker) for marker in hard_markers)
+    return "high" if len(text) > 450 or len(parts) > 1 or marker_count >= 2 else "medium"
 
 
 def _extract_json(text: str) -> dict:
@@ -64,7 +79,7 @@ def parse_geometry(problem: str) -> dict | None:
             response_mime_type="application/json",
             temperature=0.15,
             max_output_tokens=16384,
-            thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.HIGH),
+            thinking_config=types.ThinkingConfig(thinking_level=_reasoning_level(problem)),
         ),
     )
     return _extract_json(resp.text)
@@ -112,7 +127,8 @@ def ocr_latex(image_data_url: str) -> dict | None:
     return _vision_json(image_data_url, LATEX_SYSTEM, LATEX_USER, max_tokens=2048)
 
 
-def _text_json(system: str, user: str, max_tokens: int = 8192) -> dict | None:
+def _text_json(system: str, user: str, max_tokens: int = 8192,
+               thinking_level: str = "high") -> dict | None:
     """Gọi Gemini chỉ với văn bản, trả JSON."""
     if not is_configured():
         return None
@@ -123,7 +139,7 @@ def _text_json(system: str, user: str, max_tokens: int = 8192) -> dict | None:
         config=types.GenerateContentConfig(
             system_instruction=system, response_mime_type="application/json",
             temperature=0.1, max_output_tokens=max_tokens,
-            thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.HIGH),
+            thinking_config=types.ThinkingConfig(thinking_level=thinking_level),
         ),
     )
     return _extract_json(resp.text)
@@ -142,7 +158,9 @@ def repair_geometry(problem: str, candidate: dict, errors: list[str]) -> dict | 
 def solve_detailed(problem: str, points: dict | None = None, constraints: list | None = None) -> dict | None:
     pts = json.dumps(points or {}, ensure_ascii=False)
     rels = json.dumps(constraints or [], ensure_ascii=False)
-    return _text_json(SOLVE_SYSTEM, SOLVE_USER.format(problem=problem, points=pts, constraints=rels), max_tokens=16384)
+    level = _reasoning_level(problem)
+    return _text_json(SOLVE_SYSTEM, SOLVE_USER.format(problem=problem, points=pts, constraints=rels),
+                      max_tokens=16384 if level == "high" else 8192, thinking_level=level)
 
 
 def verify_detailed(problem: str, points: dict | None, constraints: list | None, candidate: dict) -> dict | None:
@@ -150,9 +168,10 @@ def verify_detailed(problem: str, points: dict | None, constraints: list | None,
     pts = json.dumps(points or {}, ensure_ascii=False)
     rels = json.dumps(constraints or [], ensure_ascii=False)
     draft = json.dumps(candidate or {}, ensure_ascii=False)
+    level = _reasoning_level(problem)
     return _text_json(VERIFY_SOLVE_SYSTEM,
                       VERIFY_SOLVE_USER.format(problem=problem, points=pts, constraints=rels, candidate=draft),
-                      max_tokens=16384)
+                      max_tokens=16384 if level == "high" else 8192, thinking_level=level)
 
 
 def repair_detailed_solution(problem: str, points: dict | None, constraints: list | None,
