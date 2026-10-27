@@ -136,6 +136,7 @@ let renderer, scene, camera, controls, host, annotationSvg;
 let annotationOn = false, activeStroke = null;
 let geometryRequestId = 0;
 let lastProblem = '';
+let axisZGroup = null;
 let lineMaterials = [];
 let stepGroups = [];          // [{group, mats:[{m,base,structural}], title, body}]
 let structuralFaceMats = [];  // mặt khối (chịu điều khiển "độ mờ mặt")
@@ -220,12 +221,16 @@ function buildAxes() {
     const a = new THREE.ArrowHelper(dir, new THREE.Vector3(), 3.8, c, 0.36, 0.22);
     a.line.material.transparent = true; a.line.material.opacity = 0.75; return a;
   };
-  g.add(mk(new THREE.Vector3(1,0,0), 0xf87171));
-  g.add(mk(new THREE.Vector3(0,0,1), 0x4ade80));
-  g.add(mk(new THREE.Vector3(0,1,0), 0x60a5fa));
+  g.add(mk(new THREE.Vector3(1,0,0), 0xf87171));   // x (math x)
+  g.add(mk(new THREE.Vector3(0,0,1), 0x4ade80));   // y (math y)
   g.add(makeLabel('x', 0xf87171, 0.42).positionTo(V(4.1,0,0)));
   g.add(makeLabel('y', 0x4ade80, 0.42).positionTo(V(0,4.1,0)));
-  g.add(makeLabel('z', 0x60a5fa, 0.42).positionTo(V(0,0,4.1)));
+  g.add(makeLabel('O', 0x94a3b8, 0.36).positionTo(V(-0.25,-0.25,0)));
+  // trục z (chiều cao) — ẩn khi vẽ hình 2D
+  axisZGroup = new THREE.Group();
+  axisZGroup.add(mk(new THREE.Vector3(0,1,0), 0x60a5fa));
+  axisZGroup.add(makeLabel('z', 0x60a5fa, 0.42).positionTo(V(0,0,4.1)));
+  g.add(axisZGroup);
   scene.add(g);
 }
 
@@ -581,6 +586,7 @@ function frameCamera(P) {
   currentSpec._center = center; currentSpec._radius = radius;
   const flat = !!currentSpec.dim2d;
   if (controls) controls.enableRotate = !flat;              // 2D: khoá xoay
+  if (axisZGroup) axisZGroup.visible = !flat;               // 2D: ẩn trục z -> chỉ còn Oxy
   const off = flat ? new THREE.Vector3(0.001, radius*3.4, 0.001)   // nhìn từ trên
                    : new THREE.Vector3(radius*1.9, radius*1.5, radius*2.1);
   tweenCamera(center.clone().add(off), center);

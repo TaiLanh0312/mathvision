@@ -35,12 +35,22 @@ def is_configured() -> bool:
 DEFAULT_MODEL = "gemini-flash-lite-latest"
 
 
+def _fast(model: str) -> str:
+    """Chốt chặn tốc độ: mọi model KHÔNG phải 'lite' đều 150-280s với key này
+    -> ép về flash-lite. Đặt ALLOW_SLOW_MODEL=1 nếu muốn dùng model mạnh (chậm)."""
+    if os.getenv("ALLOW_SLOW_MODEL") == "1":
+        return model or DEFAULT_MODEL
+    if model and "lite" in model.lower():
+        return model
+    return DEFAULT_MODEL
+
+
 def _geom_model() -> str:
-    return os.getenv("GEMINI_GEOMETRY_MODEL") or os.getenv("GEMINI_MODEL") or DEFAULT_MODEL
+    return _fast(os.getenv("GEMINI_GEOMETRY_MODEL") or os.getenv("GEMINI_MODEL"))
 
 
 def _reason_model() -> str:
-    return os.getenv("GEMINI_REASONING_MODEL") or os.getenv("GEMINI_MODEL") or DEFAULT_MODEL
+    return _fast(os.getenv("GEMINI_REASONING_MODEL") or os.getenv("GEMINI_MODEL"))
 
 
 def _thinking(model: str, level: str):
