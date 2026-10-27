@@ -255,9 +255,9 @@ def validate_scene_spec(spec: object, problem: str = "") -> list[str]:
             if lu < 1e-9 or lv < 1e-9:
                 errors.append(f"Constraint {kind} có đoạn suy biến.")
                 continue
-            dot = sum(u[i] * v[i] for i in range(3))
-            cross = [u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]]
-            ratio = abs(dot) / (lu * lv) if kind == "perpendicular" else norm(cross) / (lu * lv)
+            dotv = sum(u[i] * v[i] for i in range(3))
+            cp = [u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]]
+            ratio = abs(dotv) / (lu * lv) if kind == "perpendicular" else norm(cp) / (lu * lv)
             if ratio > 1e-3:
                 errors.append(f"Tọa độ không thỏa ràng buộc {kind}.")
         elif kind == "equal_length":

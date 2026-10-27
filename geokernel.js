@@ -792,10 +792,8 @@ export function solveProblem(text) {
 
   // Guard: các cấu trúc kernel CHƯA dựng chính xác -> nhường AI (tránh vẽ sai).
   const UNSUPPORTED = [
-    /m[aặ]t\s*c[aầ]u/i,                                   // mặt cầu
+    /m[aặ]t\s*c[aầ]u/i,                                   // mặt cầu (giao cầu-mặt)
     /giao\s*đi[eể]m\s*c[uủ]a\s+hai/i,                     // giao hai đường
-    /vu[oô]ng\s*g[oó]c\s*v[oớ]i\s*m[aặ]t\s*ph[aẳ]ng\s*\(/i, // mp ⊥ mp
-    /đi[eể]m\s*(?:[A-Z]'?)\s*l[aà]\s*t[aâ]m\s/i,          // "O là tâm ..." (điểm = tâm)
   ];
   if (UNSUPPORTED.some((re) => re.test(t))) return { ok: false, reason: 'complex-construction' };
 
