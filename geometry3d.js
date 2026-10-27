@@ -39,7 +39,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
-import { solveProblem } from './geokernel.js';
+import { solveProblem, extractDerived } from './geokernel.js';
 
 const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const API_BASE = ''; // same origin (FastAPI serves this frontend)
@@ -673,14 +673,18 @@ async function fetchDetailedSolution(problem) {
     const newPoints = {}, newLabels = {}, drawSteps = [], solMeta = [];
     sol.forEach((st) => {
       const dr = st.draw || {};
-      Object.assign(newPoints, dr.points || {});
+      // (1) điểm/đoạn AI tự điền  + (2) điểm kernel TỰ TRÍCH từ chữ lời giải (chắc chắn)
+      let ex = {};
+      try { ex = extractDerived(`${st.title || ''} ${st.body || ''}`, { ...baseSpec.points, ...newPoints }).points || {}; } catch {}
+      const stepPoints = { ...(dr.points || {}), ...ex };
+      Object.assign(newPoints, stepPoints);
       Object.assign(newLabels, dr.labels || {});
-      const drawn = [['points', 'o'], ['segments', 'a'], ['dashed', 'a']]
-        .some(([k]) => dr[k] && (Array.isArray(dr[k]) ? dr[k].length : Object.keys(dr[k]).length));
-      if (drawn) {
+      const segs = dr.segments || [], dash = dr.dashed || [];
+      const hasDraw = Object.keys(stepPoints).length || segs.length || dash.length;
+      if (hasDraw) {
         drawSteps.push({
           title: st.title || 'Vẽ thêm', body: st.body || '', color: 'emerald',
-          points: Object.keys(dr.points || {}), solidEdges: dr.segments || [], dashedEdges: dr.dashed || [],
+          points: Object.keys(stepPoints), solidEdges: segs, dashedEdges: dash,
         });
         solMeta.push({ title: st.title, body: st.body, stepIndex: figureConstr.length + drawSteps.length - 1 });
       } else {

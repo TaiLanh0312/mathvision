@@ -488,8 +488,11 @@ function normalizeText(src) {
 
 /* Parse các điểm phái sinh: trung điểm & điểm chia đoạn theo tỉ lệ. */
 const _N = "[A-Z]'?";
-function parseDerivedPoints(t, F) {
-  const P = { ...F.points };
+function parseDerivedPoints(t, F) { return derivePoints(t, F.points); }
+/* Trích điểm phái sinh từ MỘT đoạn văn bản bất kỳ (vd lời giải) + tập điểm đã có. */
+export function extractDerived(rawText, pointsMap) { return derivePoints(normalizeText(rawText || ''), pointsMap || {}); }
+function derivePoints(t, basePoints) {
+  const P = { ...basePoints };
   const added = {};
   const hints = {};
   // Trung điểm: "M, N, P (lần lượt) là trung điểm của các cạnh AB, BC, CC'"
