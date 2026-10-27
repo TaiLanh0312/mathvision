@@ -12,9 +12,12 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-  <!-- KaTeX (render công thức) -->
+  <!-- KaTeX (render nhanh để xem trước) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <!-- MathJax (xuất SVG/PNG/MathML cho Word, không cần LaTeX) -->
+  <script>window.MathJax = { svg: { fontCache: 'none' }, startup: { typeset: false } };</script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
 
   <script>
     tailwind.config = {
@@ -594,12 +597,25 @@ b) Thiết diện (P) qua A và ⊥ SC.</textarea>
 
                 <!-- code -->
                 <div class="mt-4 overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
-                  <div class="flex items-center justify-between border-b border-slate-800 px-4 py-2">
+                  <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 px-4 py-2">
                     <span class="font-mono text-xs text-slate-400">latex.tex</span>
-                    <button id="copyLatex" class="inline-flex items-center gap-1.5 rounded-md bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-200 transition hover:bg-slate-700">
-                      <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-                      <span id="copyLabel">Copy</span>
-                    </button>
+                    <div class="flex flex-wrap items-center gap-1.5">
+                      <button id="copyLatex" class="inline-flex items-center gap-1.5 rounded-md bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-200 transition hover:bg-slate-700">
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                        <span id="copyLabel">Copy LaTeX</span>
+                      </button>
+                      <button id="copyImg" class="inline-flex items-center gap-1.5 rounded-md bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-200 transition hover:bg-slate-700" title="Copy ảnh để dán vào Word (mọi phiên bản)">
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
+                        <span id="copyImgLabel">Copy ảnh</span>
+                      </button>
+                      <button id="dlPng" class="inline-flex items-center gap-1.5 rounded-md bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-200 transition hover:bg-slate-700" title="Tải ảnh PNG công thức">
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>PNG
+                      </button>
+                      <button id="copyMml" class="inline-flex items-center gap-1.5 rounded-md bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-200 transition hover:bg-slate-700" title="Copy MathML để dán vào Word (Equation)">
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg>
+                        <span id="copyMmlLabel">MathML</span>
+                      </button>
+                    </div>
                   </div>
                   <pre class="scroll-slim overflow-x-auto p-4 font-mono text-[13px] leading-relaxed text-cyan-300"><code id="latexCode">\int_{0}^{\frac{\pi}{2}} \frac{\sin x}{\sin x+\cos x}\,dx</code></pre>
                 </div>
