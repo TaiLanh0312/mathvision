@@ -9,8 +9,8 @@ services:
       - key: GEMINI_API_KEY
         sync: false            # nhập thủ công trong dashboard (bí mật)
       - key: GEMINI_MODEL
-        value: gemini-3.8-flash
+        value: gemini-flash-lite-latest
       - key: GEMINI_GEOMETRY_MODEL
-        value: gemini-3.8-flash
+        value: gemini-flash-lite-latest
       - key: GEMINI_REASONING_MODEL
-        value: gemini-3.8-flash
+        value: gemini-flash-lite-latest

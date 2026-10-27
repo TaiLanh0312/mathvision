@@ -403,12 +403,15 @@ b) Thiết diện (P) qua A và ⊥ SC.</textarea>
               </div>
 
               <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
-                <div class="mb-3 flex items-center justify-between">
+                <div class="mb-3 flex items-center justify-between gap-2">
                   <h2 class="flex items-center gap-2 text-sm font-semibold text-slate-900">
                     <svg class="h-4 w-4 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
                     Lời giải chi tiết
                   </h2>
-                  <span class="rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600 ring-1 ring-emerald-100">Chuẩn TN</span>
+                  <button id="solveAI" class="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 transition hover:bg-blue-100" title="Nhờ AI giải chi tiết hơn & vẽ thêm (có thể mất vài giây)">
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v4M3 5h4M13 3l1.9 5.1L20 10l-5.1 1.9L13 17l-1.9-5.1L6 10l5.1-1.9L13 3Z"/></svg>
+                    Giải kỹ (AI)
+                  </button>
                 </div>
                 <ol id="solutionList" class="flex flex-col gap-2.5"><!-- solution steps --></ol>
               </div>

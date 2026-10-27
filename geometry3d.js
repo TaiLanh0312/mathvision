@@ -39,6 +39,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { solveProblem, extractDerived } from './geokernel.js';
 
 const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const API_BASE = ''; // same origin (FastAPI serves this frontend)
@@ -134,6 +135,7 @@ const SAMPLES = { pyramid: samplePyramid, prism: samplePrism };
 let renderer, scene, camera, controls, host, annotationSvg;
 let annotationOn = false, activeStroke = null;
 let geometryRequestId = 0;
+let lastProblem = '';
 let lineMaterials = [];
 let stepGroups = [];          // [{group, mats:[{m,base,structural}], title, body}]
 let structuralFaceMats = [];  // mặt khối (chịu điều khiển "độ mờ mặt")
@@ -719,8 +721,23 @@ async function parseAndBuild() {
   const problem = (ta?.value || '').trim();
   if (!problem) { setStatus('Hãy nhập đề bài trước khi dựng hình.', 'warn'); return; }
   const requestId = ++geometryRequestId;
-  clearCurrentGeometry('AI đang đọc toàn bộ đề và dựng hình…');
-  setStatus('AI đang đọc toàn bộ đề, dựng hình và kiểm tra dữ kiện…', 'info');
+  lastProblem = problem;
+
+  // 1) KERNEL NỘI BỘ — tức thì, toạ độ CHÍNH XÁC (không phụ thuộc AI).
+  const t0 = performance.now();
+  let solved = null;
+  try { solved = solveProblem(problem); } catch (e) { solved = { ok: false, reason: e.message }; }
+  if (requestId !== geometryRequestId) return;
+  if (solved && solved.ok) {
+    buildFromSpec(solved.spec);
+    const ms = Math.max(1, Math.round(performance.now() - t0));
+    setStatus(`⚡ Dựng chính xác bằng kernel nội bộ · ${ms}ms. Lời giải chuẩn ở panel phải — bấm "✨ Giải kỹ (AI)" nếu muốn chi tiết hơn.`, 'ok');
+    return;
+  }
+
+  // 2) FALLBACK AI — chỉ khi kernel chưa có mẫu cho hình này.
+  clearCurrentGeometry('Hình chưa có mẫu kernel — AI đang đọc đề và dựng…');
+  setStatus('Hình chưa có mẫu kernel — AI đang phân tích (có thể chậm vài giây)…', 'info');
   busy(true);
   try {
     const res = await fetch(`${API_BASE}/api/geometry/parse`, {
@@ -735,15 +752,11 @@ async function parseAndBuild() {
     }
     if (data.error) throw new Error(data.error);
     buildFromSpec(data);
-    const assumptions = Array.isArray(data.assumptions) && data.assumptions.length
-      ? ` Giả định minh họa: ${data.assumptions.join('; ')}.` : '';
-    setStatus(`✓ AI đã dựng "${data.title || 'mô hình'}"; cấu trúc hình đã qua kiểm tra.${assumptions}`, assumptions ? 'warn' : 'ok');
-    fetchDetailedSolution(problem, requestId);
+    setStatus(`✓ AI đã dựng "${data.title || 'mô hình'}" (tham khảo). Bấm "✨ Giải kỹ (AI)" để có lời giải.`, 'ok');
   } catch (err) {
     if (requestId !== geometryRequestId) return;
     clearCurrentGeometry('Chưa dựng được hình cho đề này. Kiểm tra backend và dữ kiện rồi thử lại.');
-    setStatus(`AI chưa thể dựng hình: ${err.message}. Đang thử giải riêng…`, 'warn');
-    await solveWithoutFigure(problem, requestId, err.message);
+    setStatus(`AI chưa thể dựng hình: ${err.message}.`, 'warn');
   } finally { if (requestId === geometryRequestId) busy(false); }
 }
 
@@ -769,7 +782,10 @@ async function fetchDetailedSolution(problem, requestId) {
     const newPoints = {}, newLabels = {}, drawSteps = [], solMeta = [];
     sol.forEach((st) => {
       const dr = st.draw || {};
-      const stepPoints = dr.points || {};
+      // Kernel tự trích điểm phái sinh từ chữ lời giải (phòng khi AI quên điền draw).
+      let exPts = {};
+      try { exPts = extractDerived(`${st.title || ''} ${st.body || ''}`, { ...baseSpec.points, ...newPoints }).points || {}; } catch {}
+      const stepPoints = { ...exPts, ...(dr.points || {}) };
       Object.assign(newPoints, stepPoints);
       Object.assign(newLabels, dr.labels || {});
       const segs = dr.segments || [], dash = dr.dashed || [];
@@ -863,6 +879,14 @@ function wire() {
   slider && slider.addEventListener('input', () => setStep(+slider.value));
   const togAll = document.getElementById('pointToggleAll');
   togAll && togAll.addEventListener('click', toggleAllPoints);
+  const solveBtn = document.getElementById('solveAI');
+  solveBtn && solveBtn.addEventListener('click', async () => {
+    if (!lastProblem) { setStatus('Hãy dựng một đề ở ô "Đề bài THPT" trước.', 'warn'); return; }
+    solveBtn.disabled = true; const old = solveBtn.innerHTML;
+    solveBtn.innerHTML = 'Đang giải…';
+    try { await fetchDetailedSolution(lastProblem, geometryRequestId); }
+    finally { solveBtn.disabled = false; solveBtn.innerHTML = old; }
+  });
   const img = document.getElementById('img4k');
   img && img.addEventListener('click', exportImage);
   const tz = document.getElementById('tikz');

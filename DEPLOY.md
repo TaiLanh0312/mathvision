@@ -37,9 +37,9 @@ cloudflared tunnel --url http://localhost:8000
 3. Render tự nhận `Dockerfile` (Runtime = Docker). Plan **Free**.
 4. Mục **Environment** → thêm biến bí mật:
    - `GEMINI_API_KEY` = khoá của bạn
-   - `GEMINI_MODEL` = `gemini-3.8-flash`
-   - `GEMINI_GEOMETRY_MODEL` = `gemini-3.8-flash`
-   - `GEMINI_REASONING_MODEL` = `gemini-3.8-flash`
+   - `GEMINI_MODEL` = `gemini-flash-lite-latest`
+   - `GEMINI_GEOMETRY_MODEL` = `gemini-flash-lite-latest`
+   - `GEMINI_REASONING_MODEL` = `gemini-flash-lite-latest`
 5. **Create Web Service**. Chờ build ~2-3 phút → được link `https://mathvision-xxxx.onrender.com`.
 
 (Có sẵn `render.yaml` nếu dùng Blueprint. Lưu ý: plan Free "ngủ" sau 15 phút không dùng,
@@ -52,7 +52,7 @@ lần truy cập đầu sẽ chờ ~30s khởi động lại.)
 2. Upload toàn bộ file dự án (hoặc `git push` vào repo của Space).
 3. Space Settings → **Variables and secrets** → thêm secret:
    - `GEMINI_API_KEY` = khoá
-   - `GEMINI_MODEL` = `gemini-3.8-flash`
+   - `GEMINI_MODEL` = `gemini-flash-lite-latest`
 4. Space tự build `Dockerfile` (cổng 7860 đã cấu hình) → link `https://<user>-<space>.hf.space`.
 
 ---

@@ -31,6 +31,36 @@ def is_configured() -> bool:
     return bool(os.getenv("GEMINI_API_KEY")) and genai is not None
 
 
+# Model NHANH mặc định. Tránh gemini-3.*-flash (bật "thinking" -> 60-150s mỗi lệnh).
+DEFAULT_MODEL = "gemini-flash-lite-latest"
+
+
+def _geom_model() -> str:
+    return os.getenv("GEMINI_GEOMETRY_MODEL") or os.getenv("GEMINI_MODEL") or DEFAULT_MODEL
+
+
+def _reason_model() -> str:
+    return os.getenv("GEMINI_REASONING_MODEL") or os.getenv("GEMINI_MODEL") or DEFAULT_MODEL
+
+
+def _thinking(model: str, level: str):
+    """ThinkingConfig cho model hỗ trợ; None cho flash-lite (không có thinking -> nhanh)."""
+    if not model or "lite" in model.lower():
+        return None
+    try:
+        return types.ThinkingConfig(thinking_level=level)
+    except Exception:
+        return None
+
+
+def _cfg(system, *, thinking=None, mime="application/json", temperature=0.15, max_tokens=8192):
+    kwargs = dict(system_instruction=system, response_mime_type=mime,
+                  temperature=temperature, max_output_tokens=max_tokens)
+    if thinking is not None:
+        kwargs["thinking_config"] = thinking
+    return types.GenerateContentConfig(**kwargs)
+
+
 def _reasoning_level(problem: str) -> str:
     """Use more reasoning for long, multi-part, or proof-heavy geometry prompts."""
     text = unicodedata.normalize("NFD", (problem or "").lower().replace("đ", "d"))
@@ -122,7 +152,7 @@ def parse_geometry(problem: str) -> dict | None:
         return None
 
     client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-    model = os.getenv("GEMINI_GEOMETRY_MODEL") or "gemini-3.8-flash"
+    model = _geom_model()
 
     # One-shot: ví dụ chuẩn (user->model) rồi tới đề thật.
     contents = [
@@ -130,13 +160,8 @@ def parse_geometry(problem: str) -> dict | None:
         types.Content(role="model", parts=[types.Part(text=ONE_SHOT_JSON)]),
         types.Content(role="user", parts=[types.Part(text=USER_TEMPLATE.format(problem=problem))]),
     ]
-    config = types.GenerateContentConfig(
-        system_instruction=SYSTEM_PROMPT,
-        response_mime_type="application/json",
-        temperature=0.15,
-        max_output_tokens=16384,
-        thinking_config=types.ThinkingConfig(thinking_level=_reasoning_level(problem)),
-    )
+    config = _cfg(SYSTEM_PROMPT, thinking=_thinking(model, _reasoning_level(problem)),
+                  temperature=0.15, max_tokens=8192)
     return _generate_json_with_retry(client, model, contents, config)
 
 
@@ -151,15 +176,12 @@ def _vision_json(image_data_url: str, system: str, user: str, max_tokens: int = 
     img_bytes = base64.b64decode(b64)
 
     client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-    model = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
+    model = _reason_model()
     contents = [types.Content(role="user", parts=[
         types.Part(text=user),
         types.Part.from_bytes(data=img_bytes, mime_type=mime),
     ])]
-    config = types.GenerateContentConfig(
-        system_instruction=system, response_mime_type="application/json",
-        temperature=0.2, max_output_tokens=max_tokens,
-    )
+    config = _cfg(system, thinking=_thinking(model, "low"), temperature=0.2, max_tokens=max_tokens)
     return _generate_json_with_retry(client, model, contents, config)
 
 
@@ -185,12 +207,8 @@ def _text_json(system: str, user: str, max_tokens: int = 8192,
     if not is_configured():
         return None
     client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-    model = os.getenv("GEMINI_REASONING_MODEL") or "gemini-3.8-flash"
-    config = types.GenerateContentConfig(
-        system_instruction=system, response_mime_type="application/json",
-        temperature=0.1, max_output_tokens=max_tokens,
-        thinking_config=types.ThinkingConfig(thinking_level=thinking_level),
-    )
+    model = _reason_model()
+    config = _cfg(system, thinking=_thinking(model, thinking_level), temperature=0.1, max_tokens=max_tokens)
     return _generate_json_with_retry(client, model, [types.Content(role="user", parts=[types.Part(text=user)])], config)
 
 
