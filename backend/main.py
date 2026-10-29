@@ -39,7 +39,9 @@ from special_cases import exact_scene, exact_solution
 from samples import (mock_grade, mock_solution, mock_ocr,
                      mock_latex)
 
-FRONTEND_DIR = Path(__file__).resolve().parent.parent  # repo root holds index.html
+REPO_ROOT = Path(__file__).resolve().parent.parent
+BUILT_FRONTEND_DIR = REPO_ROOT / "www"
+FRONTEND_DIR = BUILT_FRONTEND_DIR if BUILT_FRONTEND_DIR.joinpath("index.html").exists() else REPO_ROOT
 
 app = FastAPI(title="MathVision PRO API", version="0.3.0")
 
@@ -63,7 +65,8 @@ class GradeRequest(BaseModel):
 
 
 class OcrRequest(BaseModel):
-    image: str                # data URL (base64) ảnh chứa đề bài / công thức
+    image: str | None = None  # ảnh đơn (data URL)
+    images: list[str] | None = None  # nhiều trang được Google Document Scanner quét
 
 
 class SolveRequest(BaseModel):
@@ -156,10 +159,13 @@ def grade_sol(req: GradeRequest):
 
 @app.post("/api/ocr")
 def ocr(req: OcrRequest):
-    if not req.image:
+    images = req.images or ([req.image] if req.image else [])
+    if not images:
         return JSONResponse({"error": "Thiếu ảnh."}, status_code=400)
+    if len(images) > 6:
+        return JSONResponse({"error": "Chỉ nhận tối đa 6 trang mỗi lần quét."}, status_code=400)
     try:
-        result = ocr_problem(req.image)
+        result = ocr_problem(images)
         if result is None:
             result = mock_ocr("")
             result["source"] = "mock"

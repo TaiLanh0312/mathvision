@@ -42,7 +42,8 @@ import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { solveProblem, extractDerived } from './geokernel.js';
 
 const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-const API_BASE = ''; // same origin (FastAPI serves this frontend)
+const apiBase = () => (window.Capacitor?.isNativePlatform?.() || window.MathVisionNative?.isNativePlatform?.())
+  ? 'https://mathvision-igrb.onrender.com' : '';
 
 /* ---------- Palette ---------- */
 const COLOR = {
@@ -672,7 +673,7 @@ function clearStatus() { const el = document.getElementById('buildStatus'); el &
 async function solveWithoutFigure(problem, requestId, sceneError) {
   renderSolution([{ title: 'Đang thử giải riêng', body: 'AI không dựng được hình ở lượt đầu; đang gửi đề sang luồng giải độc lập.' }]);
   try {
-    const res = await fetch(`${API_BASE}/api/geometry/solve`, {
+    const res = await fetch(`${apiBase()}/api/geometry/solve`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ problem, text_only: true }),
     });
@@ -746,7 +747,7 @@ async function parseAndBuild() {
   setStatus('Hình chưa có mẫu kernel — AI đang phân tích (có thể chậm vài giây)…', 'info');
   busy(true);
   try {
-    const res = await fetch(`${API_BASE}/api/geometry/parse`, {
+    const res = await fetch(`${apiBase()}/api/geometry/parse`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ problem }),
     });
@@ -775,7 +776,7 @@ async function fetchDetailedSolution(problem, requestId) {
     ? baseSpec.construction : deriveConstruction(baseSpec);
   el.innerHTML = '<li class="animate-pulse text-xs text-slate-400">AI đang giải; một lượt kiểm tra độc lập sẽ soát đủ các ý và phép tính…</li>';
   try {
-    const res = await fetch(`${API_BASE}/api/geometry/solve`, {
+    const res = await fetch(`${apiBase()}/api/geometry/solve`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ problem, points: baseSpec.points, constraints: baseSpec.constraints || [] }),
     });

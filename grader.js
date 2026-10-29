@@ -7,7 +7,8 @@
 (() => {
   'use strict';
   const $ = (id) => document.getElementById(id);
-  const API_BASE = '';
+  const apiBase = () => (window.Capacitor?.isNativePlatform?.() || window.MathVisionNative?.isNativePlatform?.())
+    ? 'https://mathvision-igrb.onrender.com' : '';
 
   const feed = $('camFeed'), shot = $('camShot'), overlay = $('camOverlay');
   const placeholder = $('camPlaceholder'), stage = $('camStage');
@@ -230,7 +231,7 @@
 
     busy(true);
     try {
-      const res = await fetch(`${API_BASE}${MODES[mode].endpoint}`, {
+      const res = await fetch(`${apiBase()}${MODES[mode].endpoint}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image: imageDataURL, problem: activeProblem(), mode }),
       });

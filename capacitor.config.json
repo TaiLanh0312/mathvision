@@ -1,0 +1,8 @@
+{
+  "appId": "com.geopro.mathvision",
+  "appName": "MathVision",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  }
+}

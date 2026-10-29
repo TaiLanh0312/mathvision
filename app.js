@@ -9,6 +9,8 @@
 
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+  const apiBase = () => (window.Capacitor?.isNativePlatform?.() || window.MathVisionNative?.isNativePlatform?.())
+    ? 'https://mathvision-igrb.onrender.com' : '';
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   /* ---------- Tab routing ---------- */
@@ -192,42 +194,71 @@
   }
 
   /* ---------- Quét ảnh -> OCR đề bài (dùng chung tab 1 & grader) ---------- */
-  async function ocrImageToField(file, targetSel, btn) {
+  async function ocrImagesToField(images, targetSel, btn) {
     const target = $(targetSel);
-    if (!file || !target) return;
-    if (!file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const orig = btn ? btn.innerHTML : '';
-      if (btn) { btn.disabled = true; btn.textContent = 'Đang quét…'; }
-      try {
-        const res = await fetch('/api/ocr', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: reader.result }),
-        });
-        const d = await res.json();
-        if (d && d.text) {
-          target.value = d.text;
-          target.dispatchEvent(new Event('input', { bubbles: true }));
-          target.focus();
-        } else throw new Error((d && d.error) || 'Không đọc được đề');
-      } catch (e) {
-        if (btn) { btn.innerHTML = orig; }
-        alert('Quét ảnh lỗi: ' + e.message + '\n(Cần chạy backend + cấu hình GEMINI_API_KEY để OCR thật.)');
-        return;
-      }
+    if (!target || !images.length) return;
+    const orig = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Đang đọc đề…'; }
+    try {
+      const res = await fetch(`${apiBase()}/api/ocr`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ images }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d?.text) throw new Error(d?.error || `HTTP ${res.status}`);
+      target.value = d.text;
+      target.dispatchEvent(new Event('input', { bubbles: true }));
+      target.focus();
+    } catch (e) {
+      alert('Quét ảnh lỗi: ' + e.message + '\n(Cần kết nối mạng và cấu hình GEMINI_API_KEY trên máy chủ.)');
+    } finally {
       if (btn) { btn.disabled = false; btn.innerHTML = orig; }
-    };
-    reader.readAsDataURL(file);
+    }
+  }
+
+  function fileAsDataURL(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error('Không đọc được ảnh đã chọn.'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function ocrImageToField(file, targetSel, btn) {
+    if (!file || !file.type.startsWith('image/')) return;
+    try { await ocrImagesToField([await fileAsDataURL(file)], targetSel, btn); }
+    catch (e) { alert(e.message); }
+  }
+
+  async function scanProblem(targetSel, btn, fallbackInput) {
+    const scanner = window.MathVisionScanner || window.Capacitor?.Plugins?.DocumentScanner;
+    if (!window.Capacitor?.isNativePlatform?.() || !scanner?.scan) {
+      fallbackInput?.click();
+      return;
+    }
+    const original = btn.innerHTML;
+    btn.disabled = true; btn.textContent = 'Đang mở Google Scanner…';
+    try {
+      const result = await scanner.scan();
+      if (!result.cancelled && result.images?.length) {
+        btn.textContent = 'Đang đọc đề…';
+        await ocrImagesToField(result.images, targetSel, null);
+      }
+    } catch (e) {
+      alert('Google Scanner lỗi: ' + e.message);
+    } finally {
+      btn.disabled = false; btn.innerHTML = original;
+    }
   }
 
   const scanP = $('#scanProblem'), scanPFile = $('#scanProblemFile');
-  scanP && scanP.addEventListener('click', () => scanPFile.click());
+  scanP && scanP.addEventListener('click', () => scanProblem('#tab-studio textarea', scanP, scanPFile));
   scanPFile && scanPFile.addEventListener('change', () =>
     scanPFile.files[0] && ocrImageToField(scanPFile.files[0], '#tab-studio textarea', scanP));
 
   const scanG = $('#scanGradeProblem'), scanGFile = $('#scanGradeFile');
-  scanG && scanG.addEventListener('click', () => scanGFile.click());
+  scanG && scanG.addEventListener('click', () => scanProblem('#gradeProblem', scanG, scanGFile));
   scanGFile && scanGFile.addEventListener('change', () =>
     scanGFile.files[0] && ocrImageToField(scanGFile.files[0], '#gradeProblem', scanG));
 

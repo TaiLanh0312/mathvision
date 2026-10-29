@@ -6,3 +6,6 @@ backend/.venv/
 .gitignore
 *.md
 node_modules/
+android/
+www/
+dist/

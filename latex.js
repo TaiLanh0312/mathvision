@@ -6,6 +6,8 @@
 (() => {
   'use strict';
   const $ = (id) => document.getElementById(id);
+  const apiBase = () => (window.Capacitor?.isNativePlatform?.() || window.MathVisionNative?.isNativePlatform?.())
+    ? 'https://mathvision-igrb.onrender.com' : '';
   const codeEl = $('latexCode'), renderEl = $('latexRender');
   if (!renderEl) return;
 
@@ -33,7 +35,7 @@
   async function ocrLatexFromDataURL(dataURL) {
     setBusy(true);
     try {
-      const res = await fetch('/api/latex/ocr', {
+      const res = await fetch(`${apiBase()}/api/latex/ocr`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image: dataURL }),
       });

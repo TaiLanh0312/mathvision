@@ -2,62 +2,19 @@
 <html lang="vi" class="scroll-smooth">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MathVision PRO · AI Suite cho Giáo viên Toán</title>
-  <meta name="description" content="Thin-Client Web App: Dựng hình 3D, chấm đồ thị qua webcam và số hóa công thức LaTeX bằng AI." />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f8fafc" />
+  <title>MathVision · Hình học và Toán</title>
+  <meta name="description" content="Dựng hình 3D, quét bài toán bằng Google Document Scanner, chấm bài và số hóa công thức bằng AI." />
 
-  <!-- Tailwind CSS (Play CDN) -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/app.css" />
   <!-- KaTeX (render nhanh để xem trước) -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
-  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <link rel="stylesheet" href="vendor/katex.min.css" />
+  <script defer src="vendor/katex.min.js"></script>
   <!-- MathJax (xuất SVG/PNG/MathML cho Word, không cần LaTeX) -->
   <script>window.MathJax = { svg: { fontCache: 'none' }, startup: { typeset: false } };</script>
-  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
-
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter', 'system-ui', 'sans-serif'],
-            mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
-          },
-          colors: {
-            brand: {
-              50: '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe', 300: '#93c5fd',
-              400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8',
-            },
-          },
-          boxShadow: {
-            soft: '0 1px 2px 0 rgba(15,23,42,0.04), 0 8px 24px -8px rgba(37,99,235,0.10)',
-            lift: '0 10px 40px -12px rgba(37,99,235,0.22)',
-          },
-          keyframes: {
-            'fade-up': {
-              '0%': { opacity: '0', transform: 'translateY(10px)' },
-              '100%': { opacity: '1', transform: 'translateY(0)' },
-            },
-            'fade-in': {
-              '0%': { opacity: '0' }, '100%': { opacity: '1' },
-            },
-            'pulse-dot': {
-              '0%,100%': { opacity: '1' }, '50%': { opacity: '0.35' },
-            },
-          },
-          animation: {
-            'fade-up': 'fade-up 0.5s cubic-bezier(0.22,1,0.36,1) both',
-            'fade-in': 'fade-in 0.4s ease-out both',
-            'pulse-dot': 'pulse-dot 1.8s ease-in-out infinite',
-          },
-        },
-      },
-    };
-  </script>
+  <script>window.MathJax = { svg: { fontCache: 'none' }, startup: { typeset: false } };</script>
+  <script defer src="vendor/mathjax/tex-svg.js"></script>
 
   <style>
     :root {
@@ -119,7 +76,7 @@
 
 <body class="app-bg min-h-screen bg-slate-50 font-sans text-slate-700 antialiased">
 
-  <div class="flex min-h-screen">
+  <div class="flex min-h-screen" style="min-height:100dvh">
 
     <!-- ===================== SIDEBAR ===================== -->
     <aside class="glass sticky top-0 hidden h-screen w-72 shrink-0 flex-col border-r border-slate-200/70 px-4 py-6 lg:flex" style="z-index: var(--z-sticky)">
@@ -194,9 +151,9 @@
         <div class="flex items-center justify-between">
           <span class="flex items-center gap-2 text-xs font-medium text-slate-700">
             <span class="h-2 w-2 animate-pulse-dot rounded-full bg-emerald-500"></span>
-            Thin-Client Cloud
+            Web &amp; Android
           </span>
-          <span class="rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] font-medium text-slate-500">Gemini 1.5</span>
+          <span class="rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] font-medium text-slate-500">Gemini API</span>
         </div>
         <p class="mt-2 text-[11px] leading-snug text-slate-400">Tác vụ nặng xử lý tại Cloud. Máy trường chạy mượt 60fps.</p>
       </div>
@@ -226,9 +183,9 @@
             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-6 0v4"/><rect width="18" height="11" x="3" y="11" rx="2"/></svg>
             Lưu giáo án
           </button>
-          <button id="newLesson" class="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-cyan-500 px-3.5 py-2 text-sm font-semibold text-white shadow-lift transition hover:-translate-y-px hover:brightness-105 active:translate-y-0">
+          <button id="newLesson" class="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-cyan-500 px-2.5 py-2 text-sm font-semibold text-white shadow-lift transition hover:-translate-y-px hover:brightness-105 active:translate-y-0 sm:px-3.5">
             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l1.9 5.1L20 10l-5.1 1.9L13 17l-1.9-5.1L6 10l5.1-1.9L13 3Z"/></svg>
-            Tạo bài mới
+            <span class="hidden sm:inline">Tạo bài mới</span>
           </button>
           <div class="relative ml-1">
             <button id="profileBtn" class="flex items-center gap-2 rounded-lg border border-slate-200 bg-white py-1 pl-1 pr-2 shadow-sm transition hover:border-slate-300">
@@ -258,7 +215,7 @@
       </header>
 
       <!-- Content -->
-      <main class="scroll-slim flex-1 overflow-y-auto p-4 sm:p-6" style="height: calc(100vh - 4rem)">
+      <main class="scroll-slim flex-1 overflow-y-auto p-4 sm:p-6" style="height: calc(100dvh - 4rem)">
 
         <!-- ========= TAB 1: SMART 3D GEOMETRY ========= -->
         <section id="tab-studio" class="tab-panel" role="tabpanel" aria-label="Smart 3D Geometry">
@@ -649,8 +606,8 @@ b) Thiết diện (P) qua A và ⊥ SC.</textarea>
   <script type="importmap">
   {
     "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      "three": "./vendor/three/build/three.module.js",
+      "three/addons/": "./vendor/three/addons/"
     }
   }
   </script>
@@ -658,6 +615,7 @@ b) Thiết diện (P) qua A và ⊥ SC.</textarea>
   <script src="app.js"></script>
   <script src="grader.js"></script>
   <script src="latex.js"></script>
+  <script type="module" src="mobile-bridge.js"></script>
   <script type="module" src="geometry3d.js"></script>
   <!-- Shared component styles that depend on Tailwind classes -->
   <style>

@@ -9,6 +9,7 @@ import json
 import re
 import unicodedata
 import json5
+from functools import lru_cache
 
 import base64
 
@@ -69,6 +70,21 @@ def _cfg(system, *, thinking=None, mime="application/json", temperature=0.15, ma
     if thinking is not None:
         kwargs["thinking_config"] = thinking
     return types.GenerateContentConfig(**kwargs)
+
+
+@lru_cache(maxsize=4)
+def _cached_client(api_key: str, timeout_ms: int):
+    http_options = types.HttpOptions(
+        timeout=timeout_ms,
+        retry_options=types.HttpRetryOptions(attempts=1),
+    )
+    return genai.Client(api_key=api_key, http_options=http_options)
+
+
+def _client():
+    """Reuse connections and cap retries/request time so transient faults don't stall for minutes."""
+    timeout_ms = max(10000, int(os.getenv("GEMINI_TIMEOUT_MS", "90000")))
+    return _cached_client(os.getenv("GEMINI_API_KEY", ""), timeout_ms)
 
 
 def _reasoning_level(problem: str) -> str:
@@ -161,7 +177,7 @@ def parse_geometry(problem: str) -> dict | None:
     if not is_configured():
         return None
 
-    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    client = _client()
     model = _geom_model()
 
     # One-shot: ví dụ chuẩn (user->model) rồi tới đề thật.
@@ -175,22 +191,27 @@ def parse_geometry(problem: str) -> dict | None:
     return _generate_json_with_retry(client, model, contents, config)
 
 
-def _vision_json(image_data_url: str, system: str, user: str, max_tokens: int = 4096) -> dict | None:
+def _vision_json(image_data_url: str | list[str], system: str, user: str, max_tokens: int = 4096) -> dict | None:
     """Gọi Gemini Vision với 1 ảnh + prompt, trả JSON. None nếu chưa cấu hình."""
     if not is_configured():
         return None
-    header, _, b64 = (image_data_url or "").partition(",")
-    if not b64:
-        b64 = header  # không có tiền tố data:
-    mime = "image/png" if "image/png" in header else "image/jpeg"
-    img_bytes = base64.b64decode(b64)
+    image_data_urls = image_data_url if isinstance(image_data_url, list) else [image_data_url]
+    image_parts = []
+    for data_url in image_data_urls:
+        header, separator, b64 = (data_url or "").partition(",")
+        if not separator:
+            b64, mime = header, "image/jpeg"  # data base64 trần
+        else:
+            mime = header.split(";", 1)[0].removeprefix("data:").lower()
+            if mime == "image/jpg":
+                mime = "image/jpeg"
+        if mime not in ("image/jpeg", "image/png", "image/webp"):
+            raise ValueError(f"Định dạng ảnh không được hỗ trợ: {mime or 'không xác định'}")
+        image_parts.append(types.Part.from_bytes(data=base64.b64decode(b64, validate=True), mime_type=mime))
 
-    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    client = _client()
     model = _reason_model()
-    contents = [types.Content(role="user", parts=[
-        types.Part(text=user),
-        types.Part.from_bytes(data=img_bytes, mime_type=mime),
-    ])]
+    contents = [types.Content(role="user", parts=[types.Part(text=user), *image_parts])]
     config = _cfg(system, thinking=_thinking(model, "low"), temperature=0.2, max_tokens=max_tokens)
     return _generate_json_with_retry(client, model, contents, config)
 
@@ -203,8 +224,8 @@ def grade_solution(image_data_url: str, problem: str) -> dict | None:
     return _vision_json(image_data_url, SOLUTION_SYSTEM, SOLUTION_USER.format(problem=problem or "(không nêu)"))
 
 
-def ocr_problem(image_data_url: str) -> dict | None:
-    return _vision_json(image_data_url, OCR_SYSTEM, OCR_USER, max_tokens=1024)
+def ocr_problem(image_data_url: str | list[str]) -> dict | None:
+    return _vision_json(image_data_url, OCR_SYSTEM, OCR_USER, max_tokens=4096)
 
 
 def ocr_latex(image_data_url: str) -> dict | None:
@@ -216,7 +237,7 @@ def _text_json(system: str, user: str, max_tokens: int = 8192,
     """Gọi Gemini chỉ với văn bản, trả JSON."""
     if not is_configured():
         return None
-    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    client = _client()
     model = _reason_model()
     config = _cfg(system, thinking=_thinking(model, thinking_level), temperature=0.1, max_tokens=max_tokens)
     return _generate_json_with_retry(client, model, [types.Content(role="user", parts=[types.Part(text=user)])], config)

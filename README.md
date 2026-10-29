@@ -1,18 +1,20 @@
 # MathVision PRO
 
-Web App thin-client cho giáo viên Toán THPT. Frontend siêu nhẹ (HTML + Vanilla JS +
-Tailwind CDN + Three.js), xử lý hình học nặng đẩy lên backend (FastAPI + Gemini).
+Web App cho giáo viên Toán THPT với bản Android cài đặt riêng. Giao diện, renderer 3D và bộ
+công thức được đóng gói cục bộ; dựng hình AI, OCR và lời giải gọi backend FastAPI + Gemini.
 
 ## Tính năng
 1. **Smart 3D Geometry** — dựng & bóc tách hình học không gian theo layer (Three.js).
-2. **Graph AI Grader** — chấm lỗi vẽ đồ thị qua webcam (sắp tới).
-3. **Snap to LaTeX** — số hóa công thức toán thành LaTeX (sắp tới).
+2. **Graph AI Grader** — chấm lỗi vẽ đồ thị qua webcam hoặc ảnh.
+3. **Snap to LaTeX** — số hóa công thức toán thành LaTeX.
 
 ## Chạy dự án
 
 > ⚠️ Không mở `index.html` bằng `file://` — trình duyệt chặn ES module. Phải chạy qua HTTP.
 
 ```bash
+npm install
+npm run build:web
 cd backend
 python -m venv .venv
 # Windows:  .venv\Scripts\activate
@@ -20,7 +22,7 @@ python -m venv .venv
 pip install -r requirements.txt
 
 # (tuỳ chọn) bật AI thật:
-cp .env.example .env      # rồi điền GEMINI_API_KEY
+cp .env.example .env      # điền GEMINI_API_KEY
 
 uvicorn main:app --reload --port 8000
 ```
@@ -30,17 +32,21 @@ Mở **http://localhost:8000** — backend phục vụ luôn frontend.
 - Smart 3D cần `GEMINI_API_KEY`. Nếu thiếu khóa hoặc AI không trả được scene hợp lệ,
   ứng dụng báo lỗi và không thay đề bằng hình mẫu.
 
-## Kiến trúc dựng hình và giải: AI-first, có kiểm tra
+## Kiến trúc dựng hình và giải: kernel trước, AI bổ sung
+
 Khi bấm "Dựng & Bóc Tách 3D":
 
-1. Toàn bộ đề được gửi cho Gemini để trích các ý hỏi, dựng scene 2D/3D, và liệt kê giả định
-   hoặc dữ kiện chưa xác định.
+1. Kernel nội bộ dựng nhanh những dạng đã hỗ trợ; dạng khác được gửi cho Gemini để trích dữ kiện,
+   dựng scene 2D/3D, và liệt kê giả định hoặc dữ kiện chưa xác định.
 2. Các scene/lời giải thiếu trường hoặc bỏ sót ý được gửi thêm một lượt để AI tự sửa; backend
    kiểm tra tham chiếu điểm, cạnh, mặt, đa giác, dấu vuông góc, quan hệ tọa độ và mức bao phủ ý hỏi.
 3. Lời giải được tạo, kiểm tra cấu trúc, rồi một lượt AI suy luận độc lập giải lại. Nếu chưa
-   xác nhận được, giao diện đánh dấu chưa kiểm chứng; không dùng lời giải/hình mẫu thay thế.
+   xác nhận được, giao diện đánh dấu chưa kiểm chứng. Khi AI dựng hình lỗi, giao diện vẫn thử
+   giải riêng bằng văn bản.
 
-Luồng hình học mặc định dùng `gemini-flash-lite-latest` để giảm thời gian phản hồi; cấu hình
+Luồng hình học mặc định dùng `gemini-flash-lite-latest` để giảm thời gian phản hồi; mỗi lượt gọi
+Gemini có timeout 90 giây và không lặp retry mạng tự động để tránh chờ nhiều phút. Có thể đổi
+timeout qua `GEMINI_TIMEOUT_MS`. Cấu hình
 `GEMINI_GEOMETRY_MODEL` và `GEMINI_REASONING_MODEL` có thể chọn model khác. Các endpoint gọi
 Gemini chạy ngoài event loop để một yêu cầu chậm không chặn các request khác. Lời giải vẫn được
 một lượt độc lập kiểm tra, nên cần hai lượt Gemini; nếu lượt kiểm tra lỗi, lời giải đầu được giữ
@@ -52,6 +58,23 @@ Tất cả đều trả về cùng một *scene spec* JSON khai báo (`points / 
 dashedEdges / faces / curves / layers / entities / steps`). `geometry3d.js` là renderer
 độc lập với GeoGebra; nó nhận scene đã kiểm tra và dựng bằng Three.js.
 
+### Bản Android
+
+Ứng dụng Android đóng gói giao diện ngay trong APK và dùng Google ML Kit Document Scanner để
+quét/cắt/chỉnh nhiều trang đề. OCR, dựng hình và giải vẫn gọi Gemini trên Render nên cần Internet.
+Lần đầu mở Scanner có thể cần tải thành phần của Google Play services. Bản APK debug tạo bởi
+GitHub Actions nằm trong artifact `MathVision-Android-APK` của workflow **Build Android APK**.
+
+### Đóng gói APK Android
+
+```powershell
+npm install
+npm run android:apk
+```
+
+Máy build cục bộ cần Node.js 22+, JDK 21 và Android SDK API 36. Chạy `npm run android:apk` để
+tạo `dist/MathVision.apk`; APK debug cài được bằng cách mở file trên điện thoại Android.
+
 > Các kiểm tra hiện xác nhận cấu trúc scene và những ràng buộc AI đã khai báo; chúng chưa
 > phải bộ chứng minh hình học tổng quát. Với bài toán không xác định duy nhất, cần nêu rõ
 > dữ kiện thiếu thay vì xem hình minh họa là đáp án chính xác.
@@ -60,7 +83,7 @@ dashedEdges / faces / curves / layers / entities / steps`). `geometry3d.js` là 
 ```
 index.html, app.js                  # frontend shell (served by FastAPI)
 geometry3d.js                       # renderer Three.js (nhận scene spec)
-geokernel.js                        # các bộ dựng/vector client-side cũ; Smart 3D hiện gửi AI trước
+geokernel.js                        # kernel client-side cho các dạng hình đã hỗ trợ
 backend/
   main.py           # FastAPI app + scene/solution validation + static mount
   geometry_validation.py # kiểm tra topology, tọa độ và ràng buộc

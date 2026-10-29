@@ -129,11 +129,11 @@ SOLUTION_USER = """Đề bài: {problem}
 Đọc và chấm BÀI GIẢI VIẾT TAY trong ảnh kèm theo; trả JSON theo schema."""
 
 # ---- OCR đề bài (ảnh -> văn bản đề) ----
-OCR_SYSTEM = r"""Bạn là công cụ OCR Toán học. Đọc ảnh và trích xuất ĐỀ BÀI dưới dạng
+OCR_SYSTEM = r"""Bạn là công cụ OCR Toán học. Đọc toàn bộ ảnh/trang theo đúng thứ tự và trích xuất ĐỀ BÀI dưới dạng
 văn bản thuần tiếng Việt, giữ nguyên ký hiệu toán (dùng √, ², ³, ⊥, //, ∠...).
-KHÔNG giải, KHÔNG thêm chú thích. Trả về DUY NHẤT JSON: {"text": "<đề bài>"}."""
+KHÔNG giải, KHÔNG thêm chú thích hoặc bỏ phần chữ nhỏ/ý phụ. Trả về DUY NHẤT JSON: {"text": "<đề bài>"}."""
 
-OCR_USER = "Trích xuất đề bài trong ảnh kèm theo, trả JSON {\"text\": ...}."
+OCR_USER = "Trích xuất đầy đủ đề bài trong các ảnh/trang kèm theo theo đúng thứ tự, trả JSON {\"text\": ...}."
 
 # ---- LỜI GIẢI CHI TIẾT (văn bản đề -> lời giải từng bước) ----
 SOLVE_SYSTEM = r"""Bạn là giáo viên Toán giỏi (cấp 2 & THPT). Giải CHI TIẾT, chặt chẽ đề bài
