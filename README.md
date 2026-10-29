@@ -4,9 +4,12 @@ Web App cho giáo viên Toán THPT với bản Android cài đặt riêng. Giao 
 công thức được đóng gói cục bộ; dựng hình AI, OCR và lời giải gọi backend FastAPI + Gemini.
 
 ## Tính năng
-1. **Smart 3D Geometry** — dựng & bóc tách hình học không gian theo layer (Three.js).
-2. **Graph AI Grader** — chấm lỗi vẽ đồ thị qua webcam hoặc ảnh.
-3. **Snap to LaTeX** — số hóa công thức toán thành LaTeX.
+1. **Trợ giảng đa môn** — nhập/chụp đề Toán, Lý, Hóa, Sinh, Văn, Anh, Trung giản thể/phồn thể,
+   Sử, Địa, GDCD/Kinh tế & Pháp luật, Tin học và môn khác; giải bằng Gemini đồng thời mở Google
+   để người học đối chiếu kết quả web.
+2. **Smart 3D Geometry** — dựng & bóc tách hình học không gian theo layer (Three.js).
+3. **Graph AI Grader** — chấm lỗi vẽ đồ thị qua webcam hoặc ảnh.
+4. **Snap to LaTeX** — số hóa công thức toán thành LaTeX.
 
 ## Chạy dự án
 
@@ -31,6 +34,13 @@ Mở **http://localhost:8000** — backend phục vụ luôn frontend.
 
 - Smart 3D cần `GEMINI_API_KEY`. Nếu thiếu khóa hoặc AI không trả được scene hợp lệ,
   ứng dụng báo lỗi và không thay đề bằng hình mẫu.
+- Bộ giải đa môn nhận văn bản/ảnh qua `/api/study/solve`; thao tác giải mở tìm kiếm Google song song.
+  Kết quả Google hiển thị ở tab riêng để người dùng đọc nguồn; nội dung web không được tự động đưa vào
+  Gemini hoặc xác minh chéo trong backend.
+- Phản hồi lời giải và phần sửa được lưu cục bộ trong trình duyệt/thiết bị. Chỉ các mẫu người dùng
+  đánh dấu sai và nhập lời giải đã kiểm chứng mới được xuất JSONL để đánh giá/tinh chỉnh riêng.
+  Việc xuất dữ liệu chưa tự chạy job fine-tuning; model hiện tại dùng Gemini API, còn fine-tuning
+  Gemini cần project Google Cloud/Vertex AI, dữ liệu có nhãn và cấu hình thanh toán/quyền truy cập.
 
 ## Kiến trúc dựng hình và giải: kernel trước, AI bổ sung
 

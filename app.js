@@ -252,10 +252,219 @@
     }
   }
 
+  /* ---------- Giải đa môn từ chữ/ảnh, đồng thời mở Google để đối chiếu ---------- */
+  const studyInput = $('#problemInput');
+  const studySubject = $('#studySubject');
+  const studySolveBtn = $('#studySolve');
+  const studyCameraBtn = $('#studyCamera');
+  const studyImageFile = $('#studyImageFile');
+  const studyPanel = $('#studyAnswer');
+  let pendingStudyImages = [];
+  let pendingGoogleTab = null;
+  let currentStudyResult = null;
+  let studyFeedbackRating = '';
+
+  function openStudyGoogle(problem) {
+    const url = studyGoogleUrl(problem);
+    if (!url || !problem) return false;
+    window.open(url, '_blank', 'noopener,noreferrer');
+    return true;
+  }
+
+  function studyGoogleUrl(problem) {
+    const subject = studySubject?.selectedOptions?.[0]?.textContent || '';
+    const query = [subject, problem, 'lời giải'].filter(Boolean).join(' ').trim();
+    return query ? `https://www.google.com/search?q=${encodeURIComponent(query)}` : '';
+  }
+
+  function renderStudyAnswer(result) {
+    currentStudyResult = result;
+    studyFeedbackRating = '';
+    studyPanel.classList.remove('hidden');
+    $('#studyAnswerTitle').textContent = result.title || `Lời giải — ${result.subject || 'Môn học'}`;
+    $('#studyAnswerStatus').textContent = `AI đã xử lý đề. Đề nhận dạng: ${result.recognized_problem || 'không có bản chép riêng'}`;
+    if (result.recognized_problem && studyInput && !studyInput.value.trim()) {
+      studyInput.value = result.recognized_problem;
+      studyInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    const steps = $('#studyAnswerSteps');
+    steps.replaceChildren();
+    (Array.isArray(result.steps) ? result.steps : []).forEach((step, index) => {
+      const item = document.createElement('div');
+      const heading = document.createElement('div');
+      heading.className = 'mb-1 font-semibold text-slate-800';
+      heading.textContent = step.title || `Bước ${index + 1}`;
+      const body = document.createElement('div');
+      body.className = 'whitespace-pre-wrap';
+      body.textContent = step.explanation || '';
+      item.append(heading, body);
+      steps.append(item);
+    });
+    $('#studyAnswerFinal').textContent = result.answer ? `Kết luận: ${result.answer}` : '';
+    $('#studyAnswerNotes').textContent = Array.isArray(result.notes) ? result.notes.join(' · ') : '';
+    $('#studyCorrectionWrap').classList.add('hidden');
+    $('#studyCorrection').value = '';
+    $('#studyFeedbackStatus').textContent = '';
+  }
+
+  async function solveStudy({ images = [], openWeb = true, googleTab: suppliedGoogleTab = null } = {}) {
+    const problem = studyInput?.value?.trim() || '';
+    if (!problem && !images.length) {
+      studyInput?.focus();
+      alert('Nhập đề hoặc chụp/quét ảnh trước nhé.');
+      return;
+    }
+    // Open the search synchronously inside the user gesture so mobile browsers do not block it.
+    const googleTab = suppliedGoogleTab || (openWeb ? window.open(problem ? studyGoogleUrl(problem) : 'about:blank', '_blank') : null);
+    if (problem && googleTab) googleTab.location.href = studyGoogleUrl(problem);
+    const openedGoogle = Boolean(googleTab);
+    const oldText = studySolveBtn.innerHTML;
+    studySolveBtn.disabled = true;
+    studySolveBtn.textContent = 'AI đang giải…';
+    studyPanel.classList.remove('hidden');
+    $('#studyAnswerTitle').textContent = 'Đang đọc và giải đề';
+    $('#studyAnswerStatus').textContent = openedGoogle
+      ? 'Đã mở Google để đối chiếu song song. Hãy kiểm tra nguồn và ngày đăng của kết quả web.'
+      : (images.length ? 'Đang đọc ảnh và giải bằng AI…' : 'Đang giải bằng AI…');
+    $('#studyAnswerSteps').replaceChildren();
+    $('#studyAnswerFinal').textContent = '';
+    $('#studyAnswerNotes').textContent = '';
+    try {
+      const response = await fetch(`${apiBase()}/api/study/solve`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ problem, subject: studySubject?.value || 'auto', images }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || `HTTP ${response.status}`);
+      renderStudyAnswer(data);
+      $('#studyAnswerStatus').textContent = `${data.subject || 'AI'} · ${openedGoogle ? 'Google đã mở để đối chiếu; xem nguồn gốc và ngày cập nhật.' : 'Có thể bấm “Chỉ tìm trên Google” để đối chiếu nguồn.'}`;
+      if (openedGoogle && data.recognized_problem && !problem) googleTab.location.href = studyGoogleUrl(data.recognized_problem);
+    } catch (error) {
+      $('#studyAnswerTitle').textContent = 'Chưa giải được đề';
+      $('#studyAnswerStatus').textContent = error.message || 'Có lỗi kết nối.';
+      if (openedGoogle) $('#studyAnswerNotes').textContent = 'Google đã mở riêng để bạn tra cứu; kết quả tìm kiếm chưa được AI kiểm chứng tự động.';
+      if (googleTab && !problem) googleTab.close();
+    } finally {
+      studySolveBtn.disabled = false;
+      studySolveBtn.innerHTML = oldText;
+      pendingStudyImages = [];
+    }
+  }
+
+  studySolveBtn?.addEventListener('click', () => solveStudy({ images: pendingStudyImages, openWeb: true }));
+  $('#studyGood')?.addEventListener('click', () => {
+    studyFeedbackRating = 'accepted';
+    $('#studyCorrectionWrap').classList.remove('hidden');
+    $('#studyFeedbackStatus').textContent = 'Đã đánh dấu hữu ích. Bạn có thể thêm phần đã tự kiểm chứng rồi lưu.';
+  });
+  $('#studyBad')?.addEventListener('click', () => {
+    studyFeedbackRating = 'corrected';
+    $('#studyCorrectionWrap').classList.remove('hidden');
+    $('#studyCorrection').focus();
+    $('#studyFeedbackStatus').textContent = 'Để đưa vào dữ liệu huấn luyện, hãy nhập lời giải đã được bạn kiểm chứng.';
+  });
+  $('#studySaveFeedback')?.addEventListener('click', () => {
+    if (!currentStudyResult || !studyFeedbackRating) return;
+    const correction = $('#studyCorrection').value.trim();
+    if (studyFeedbackRating === 'corrected' && !correction) {
+      $('#studyFeedbackStatus').textContent = 'Cần nhập lời giải sửa đã kiểm chứng trước khi lưu.';
+      return;
+    }
+    try {
+      const key = 'mathvision_study_feedback_v1';
+      const rows = JSON.parse(localStorage.getItem(key) || '[]');
+      rows.push({
+        subject: currentStudyResult.subject || studySubject.value || 'auto',
+        problem: currentStudyResult.recognized_problem || studyInput.value.trim(),
+        rating: studyFeedbackRating,
+        correction: correction || '',
+        answer: currentStudyResult.answer || '',
+        steps: currentStudyResult.steps || [],
+        savedAt: new Date().toISOString(),
+      });
+      localStorage.setItem(key, JSON.stringify(rows.slice(-500)));
+      $('#studyFeedbackStatus').textContent = 'Đã lưu trên thiết bị này. Dữ liệu không được tải lên máy chủ.';
+    } catch {
+      $('#studyFeedbackStatus').textContent = 'Không lưu được dữ liệu phản hồi trên thiết bị.';
+    }
+  });
+  $('#studyExportFeedback')?.addEventListener('click', () => {
+    try {
+      const rows = JSON.parse(localStorage.getItem('mathvision_study_feedback_v1') || '[]');
+      const gold = rows.filter((row) => row.rating === 'corrected' && row.correction);
+      if (!gold.length) {
+        $('#studyFeedbackStatus').textContent = 'Chưa có lời giải sửa đã kiểm chứng để xuất. Đánh dấu Sai/thiếu và nhập lời giải đúng trước.';
+        return;
+      }
+      const jsonl = gold.map((row) => JSON.stringify({ contents: [
+        { role: 'user', parts: [{ text: `Môn: ${row.subject}\nĐề bài:\n${row.problem}` }] },
+        { role: 'model', parts: [{ text: row.correction }] },
+      ] })).join('\n');
+      const blob = new Blob([jsonl], { type: 'application/jsonl;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'mathvision-verified-corrections.jsonl';
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      $('#studyFeedbackStatus').textContent = `Đã xuất ${gold.length} lời giải sửa. Chỉ dùng mẫu đã được kiểm tra khi tinh chỉnh/đánh giá model.`;
+    } catch {
+      $('#studyFeedbackStatus').textContent = 'Không đọc được dữ liệu phản hồi đã lưu.';
+    }
+  });
+  $('#studyGoogle')?.addEventListener('click', () => {
+    if (!openStudyGoogle(studyInput?.value?.trim() || '')) alert('Nhập đề bài trước khi tìm Google.');
+  });
+  studyCameraBtn?.addEventListener('click', async () => {
+    pendingGoogleTab = window.open('about:blank', '_blank');
+    const scanner = window.MathVisionScanner || window.Capacitor?.Plugins?.DocumentScanner;
+    if (!window.Capacitor?.isNativePlatform?.() || !scanner?.scan) {
+      studyImageFile?.click();
+      return;
+    }
+    const oldText = studyCameraBtn.textContent;
+    studyCameraBtn.disabled = true;
+    studyCameraBtn.textContent = 'Đang mở Google Scanner…';
+    try {
+      const result = await scanner.scan();
+      if (result.cancelled || !result.images?.length) {
+        pendingGoogleTab?.close();
+        pendingGoogleTab = null;
+        return;
+      }
+      pendingStudyImages = result.images;
+      studyCameraBtn.textContent = 'Đang gửi ảnh cho AI…';
+      await solveStudy({ images: pendingStudyImages, openWeb: true, googleTab: pendingGoogleTab });
+      pendingGoogleTab = null;
+    } catch (error) {
+      alert('Không quét được ảnh: ' + error.message);
+      pendingGoogleTab?.close();
+      pendingGoogleTab = null;
+    } finally {
+      studyCameraBtn.disabled = false;
+      studyCameraBtn.textContent = oldText;
+    }
+  });
+  studyImageFile?.addEventListener('change', async () => {
+    const file = studyImageFile.files?.[0];
+    if (!file) return;
+    try {
+      pendingStudyImages = [await fileAsDataURL(file)];
+      await solveStudy({ images: pendingStudyImages, openWeb: true, googleTab: pendingGoogleTab });
+      pendingGoogleTab = null;
+    } catch (error) {
+      alert('Không đọc được ảnh: ' + error.message);
+    } finally {
+      if (pendingGoogleTab) pendingGoogleTab.close();
+      pendingGoogleTab = null;
+      studyImageFile.value = '';
+    }
+  });
+
   const scanP = $('#scanProblem'), scanPFile = $('#scanProblemFile');
-  scanP && scanP.addEventListener('click', () => scanProblem('#tab-studio textarea', scanP, scanPFile));
+  scanP && scanP.addEventListener('click', () => scanProblem('#problemInput', scanP, scanPFile));
   scanPFile && scanPFile.addEventListener('change', () =>
-    scanPFile.files[0] && ocrImageToField(scanPFile.files[0], '#tab-studio textarea', scanP));
+    scanPFile.files[0] && ocrImageToField(scanPFile.files[0], '#problemInput', scanP));
 
   const scanG = $('#scanGradeProblem'), scanGFile = $('#scanGradeFile');
   scanG && scanG.addEventListener('click', () => scanProblem('#gradeProblem', scanG, scanGFile));

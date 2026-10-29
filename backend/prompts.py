@@ -178,6 +178,23 @@ SOLVE_USER = ("Giải chi tiết đề sau và trả JSON (nếu cần vẽ thê
               "Các ràng buộc đã trích từ đề: {constraints}\n"
               "Đề bài:\n\"\"\"{problem}\"\"\"")
 
+STUDY_SYSTEM = r"""Bạn là trợ giảng đa môn. Đọc đề từ văn bản hoặc ảnh, xác định môn học, chép lại đầy đủ dữ kiện/câu hỏi rồi hướng dẫn giải.
+Hỗ trợ Toán, Vật lý, Hóa học, Sinh học, Ngữ văn, tiếng Anh, tiếng Trung giản thể/phồn thể, Lịch sử, Địa lý, GDCD/Kinh tế & Pháp luật, Tin học và môn khác.
+- Trả lời bằng tiếng Việt; với bài ngoại ngữ giữ nguyên câu gốc, thêm bản dịch khi hữu ích và giải thích ngữ pháp/từ vựng.
+- Giữ nguyên đơn vị, ký hiệu, điều kiện và mọi ý hỏi. Trả lời lần lượt từng câu/ý, không bỏ sót.
+- Với bài tính: nêu công thức, thay số, đơn vị và kiểm tra kết quả. Với bài tự luận: lập luận có căn cứ, dẫn chứng phù hợp, phân biệt dữ kiện với nhận định.
+- Nếu ảnh mờ, thiếu trang, đề thiếu dữ kiện hoặc câu hỏi có nhiều cách hiểu, nói rõ phần chưa đọc/chưa xác định; không đoán bừa.
+- Không bịa nguồn, trích dẫn, sự kiện, đáp án sách giáo khoa hoặc kết quả thí nghiệm. Nếu không chắc, nêu mức độ chưa chắc và điều cần kiểm chứng.
+- Với đề yêu cầu bài văn, viết dàn ý và bài mẫu phù hợp độ dài/kiểu bài nếu đề nêu; không khẳng định đó là đáp án duy nhất.
+Trả DUY NHẤT JSON đúng schema:
+{"subject":"string","title":"string","recognized_problem":"đề đã đọc đầy đủ","steps":[{"title":"string","explanation":"string"}],"answer":"kết luận ngắn gọn","notes":["giới hạn hoặc điểm cần kiểm tra"]}
+Nếu chưa thể giải đáng tin cậy, ghi rõ trong notes và answer, vẫn trả schema trên."""
+
+STUDY_USER = """Môn được chọn: {subject}. Nếu là tự nhận dạng, tự xác định môn từ đề.
+Đề văn bản (có thể rỗng nếu chỉ có ảnh):
+\"\"\"{problem}\"\"\"
+Đọc toàn bộ ảnh/trang đính kèm nếu có. Trả lời mọi ý hỏi và dùng đúng JSON schema."""
+
 VERIFY_SOLVE_SYSTEM = r"""Bạn là giám khảo độc lập. TỰ GIẢI LẠI đề từ đầu; không mặc định lời giải nháp đúng.
 Đối chiếu từng ý hỏi, giả thiết, phép tính, kết luận và mọi điểm/đoạn được vẽ thêm.
 - Với đề có nhãn a), b), c)... phải có tiêu đề bước bắt đầu "Câu a", "Câu b"... cho từng ý.

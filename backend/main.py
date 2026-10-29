@@ -33,7 +33,7 @@ except ImportError:
 
 from gemini_client import (parse_geometry, grade_graph, grade_solution,
                            ocr_problem, ocr_latex, solve_detailed, verify_detailed,
-                           repair_geometry, repair_detailed_solution, is_configured)
+                           repair_geometry, repair_detailed_solution, solve_study_problem, is_configured)
 from geometry_validation import validate_scene_spec, validate_solution_spec
 from special_cases import exact_scene, exact_solution
 from samples import (mock_grade, mock_solution, mock_ocr,
@@ -74,6 +74,19 @@ class SolveRequest(BaseModel):
     points: dict | None = None   # {tên: [x,y,z]} các điểm đã có trong hình
     constraints: list[dict] | None = None  # quan hệ hình học đã kiểm tra từ scene
     text_only: bool = False      # vẫn giải khi scene chưa dựng được
+
+
+class StudySolveRequest(BaseModel):
+    problem: str | None = ""
+    subject: str = "auto"
+    images: list[str] | None = None
+
+
+STUDY_SUBJECTS = {
+    "auto", "math", "physics", "chemistry", "biology", "literature", "english",
+    "chinese_simplified", "chinese_traditional", "history", "geography", "civics",
+    "informatics", "other",
+}
 
 
 def _remove_solution_drawings(result: dict | None) -> dict | None:
@@ -229,6 +242,31 @@ def solve(req: SolveRequest):
         reviewed["source"] = ("gemini-independent-review" if reviewed.get("status") != "uncertain"
                                or not review_error else "gemini-unverified")
         return reviewed
+    except Exception as exc:
+        return JSONResponse({"error": f"{type(exc).__name__}: {exc}"}, status_code=500)
+
+
+@app.post("/api/study/solve")
+def solve_study(req: StudySolveRequest):
+    problem = (req.problem or "").strip()
+    images = req.images or []
+    if len(images) > 6:
+        return JSONResponse({"error": "Tối đa 6 trang ảnh mỗi lần."}, status_code=400)
+    if not problem and not images:
+        return JSONResponse({"error": "Hãy nhập đề bài hoặc chụp ảnh đề."}, status_code=400)
+    if req.subject not in STUDY_SUBJECTS:
+        return JSONResponse({"error": "Môn học không hợp lệ."}, status_code=400)
+    if sum(len(image) for image in images) > 24_000_000:
+        return JSONResponse({"error": "Ảnh quá lớn. Hãy chụp lại hoặc giảm số trang."}, status_code=413)
+    if len(problem) > 24_000:
+        return JSONResponse({"error": "Đề văn bản quá dài (tối đa 24.000 ký tự)."}, status_code=413)
+    try:
+        result = solve_study_problem(problem, req.subject, images)
+        if result is None:
+            return JSONResponse({"error": "Gemini chưa được cấu hình trên máy chủ."}, status_code=503)
+        if not isinstance(result.get("steps"), list) or not isinstance(result.get("answer"), str):
+            return JSONResponse({"error": "AI trả về lời giải sai định dạng. Hãy thử lại."}, status_code=502)
+        return result
     except Exception as exc:
         return JSONResponse({"error": f"{type(exc).__name__}: {exc}"}, status_code=500)
 

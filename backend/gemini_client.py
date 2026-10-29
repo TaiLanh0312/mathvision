@@ -18,7 +18,8 @@ from prompts import (SYSTEM_PROMPT, USER_TEMPLATE, ONE_SHOT_PROBLEM, ONE_SHOT_JS
                      OCR_SYSTEM, OCR_USER, SOLVE_SYSTEM, SOLVE_USER,
                      VERIFY_SOLVE_SYSTEM, VERIFY_SOLVE_USER,
                      LATEX_SYSTEM, LATEX_USER, REPAIR_SCENE_SYSTEM, REPAIR_SCENE_USER,
-                     REPAIR_SOLUTION_SYSTEM, REPAIR_SOLUTION_USER)
+                     REPAIR_SOLUTION_SYSTEM, REPAIR_SOLUTION_USER,
+                     STUDY_SYSTEM, STUDY_USER)
 
 try:  # SDK mới, hỗ trợ tắt thinking + nhanh
     from google import genai
@@ -259,6 +260,16 @@ def solve_detailed(problem: str, points: dict | None = None, constraints: list |
     level = _reasoning_level(problem)
     return _text_json(SOLVE_SYSTEM, SOLVE_USER.format(problem=problem, points=pts, constraints=rels),
                       max_tokens=16384 if level == "high" else 8192, thinking_level=level)
+
+
+def solve_study_problem(problem: str, subject: str = "auto", images: list[str] | None = None) -> dict | None:
+    """Solve a general school question from text and/or scanned image pages."""
+    user = STUDY_USER.format(subject=subject or "auto", problem=problem or "(đọc đề trong ảnh)")
+    if images:
+        return _vision_json(images, STUDY_SYSTEM, user, max_tokens=8192)
+    if not (problem or "").strip():
+        raise ValueError("Hãy nhập đề bài hoặc chụp ảnh đề.")
+    return _text_json(STUDY_SYSTEM, user, max_tokens=8192, thinking_level="low")
 
 
 def verify_detailed(problem: str, points: dict | None, constraints: list | None, candidate: dict) -> dict | None:
