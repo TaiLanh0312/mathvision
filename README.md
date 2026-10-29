@@ -4,10 +4,10 @@ Web App cho giáo viên Toán THPT với bản Android cài đặt riêng. Giao 
 công thức được đóng gói cục bộ; dựng hình AI, OCR và lời giải gọi backend FastAPI + Gemini.
 
 ## Tính năng
-1. **Trợ giảng đa môn** — nhập/chụp đề Toán, Lý, Hóa, Sinh, Văn, Anh, Trung giản thể/phồn thể,
+1. **Tab Giải bài** — nhập/chụp đề Toán, Lý, Hóa, Sinh, Văn, Anh, Trung giản thể/phồn thể,
    Sử, Địa, GDCD/Kinh tế & Pháp luật, Tin học và môn khác; giải bằng Gemini đồng thời mở Google
    để người học đối chiếu kết quả web.
-2. **Smart 3D Geometry** — dựng & bóc tách hình học không gian theo layer (Three.js).
+2. **Tab Dựng hình** — dựng & bóc tách hình học không gian theo layer (Three.js).
 3. **Graph AI Grader** — chấm lỗi vẽ đồ thị qua webcam hoặc ảnh.
 4. **Snap to LaTeX** — số hóa công thức toán thành LaTeX.
 

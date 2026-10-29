@@ -17,7 +17,11 @@
   const TABS = {
     studio: {
       title: 'Smart 3D Geometry Studio',
-      sub: 'Dựng & bóc tách hình học không gian theo layer',
+      sub: 'Dựng và tương tác hình học 2D / 3D',
+    },
+    study: {
+      title: 'Giải bài đa môn',
+      sub: 'Chụp đề, giải bằng AI và đối chiếu tìm kiếm web',
     },
     grader: {
       title: 'AI Grader',
@@ -253,7 +257,7 @@
   }
 
   /* ---------- Giải đa môn từ chữ/ảnh, đồng thời mở Google để đối chiếu ---------- */
-  const studyInput = $('#problemInput');
+  const studyInput = $('#studyProblem');
   const studySubject = $('#studySubject');
   const studySolveBtn = $('#studySolve');
   const studyCameraBtn = $('#studyCamera');
@@ -462,9 +466,9 @@
   });
 
   const scanP = $('#scanProblem'), scanPFile = $('#scanProblemFile');
-  scanP && scanP.addEventListener('click', () => scanProblem('#problemInput', scanP, scanPFile));
+  scanP && scanP.addEventListener('click', () => scanProblem('#geometryProblem', scanP, scanPFile));
   scanPFile && scanPFile.addEventListener('change', () =>
-    scanPFile.files[0] && ocrImageToField(scanPFile.files[0], '#problemInput', scanP));
+    scanPFile.files[0] && ocrImageToField(scanPFile.files[0], '#geometryProblem', scanP));
 
   const scanG = $('#scanGradeProblem'), scanGFile = $('#scanGradeFile');
   scanG && scanG.addEventListener('click', () => scanProblem('#gradeProblem', scanG, scanGFile));

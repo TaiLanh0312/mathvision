@@ -108,6 +108,16 @@
           </span>
         </button>
 
+        <button data-tab="study" class="nav-link group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition">
+          <span class="nav-icon grid h-9 w-9 shrink-0 place-items-center rounded-lg transition">
+            <svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/><path d="M8 7h8M8 11h8"/></svg>
+          </span>
+          <span class="flex flex-col items-start leading-tight">
+            <span>Giải bài</span>
+            <span class="nav-sub text-xs font-normal text-slate-400">AI đa môn + tìm web</span>
+          </span>
+        </button>
+
         <button data-tab="grader" class="nav-link group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition">
           <span class="nav-icon grid h-9 w-9 shrink-0 place-items-center rounded-lg transition">
             <svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/></svg>
@@ -221,63 +231,22 @@
         <section id="tab-studio" class="tab-panel" role="tabpanel" aria-label="Smart 3D Geometry">
           <div class="grid grid-cols-1 gap-5 xl:grid-cols-[22rem_minmax(0,1fr)_20rem]">
 
-            <!-- Col 1: Input -->
+            <!-- Col 1: Geometry input -->
             <div class="flex flex-col gap-5">
               <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
                 <div class="mb-3 flex items-center justify-between">
-                  <h2 class="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                    <svg class="h-4 w-4 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                    Đề bài THPT
-                  </h2>
-                  <button id="scanProblem" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50">
-                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
-                    Quét ảnh
-                  </button>
+                  <h2 class="text-sm font-semibold text-slate-900">Đề hình học 2D / 3D</h2>
+                  <button id="scanProblem" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50">Quét ảnh</button>
                   <input id="scanProblemFile" type="file" accept="image/*" capture="environment" class="sr-only" />
                 </div>
-                <label for="studySubject" class="mb-1.5 block text-xs font-medium text-slate-500">Môn học / ngôn ngữ</label>
-                <select id="studySubject" class="mb-3 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10">
-                  <option value="auto">Tự nhận dạng môn</option>
-                  <option value="math">Toán</option><option value="physics">Vật lý</option><option value="chemistry">Hóa học</option><option value="biology">Sinh học</option>
-                  <option value="literature">Ngữ văn</option><option value="english">Tiếng Anh</option><option value="chinese_simplified">Tiếng Trung (Giản thể)</option><option value="chinese_traditional">Tiếng Trung phồn thể (Đài Loan)</option>
-                  <option value="history">Lịch sử</option><option value="geography">Địa lý</option><option value="civics">GDCD / Kinh tế &amp; Pháp luật</option><option value="informatics">Tin học</option><option value="other">Môn khác</option>
-                </select>
-                <textarea id="problemInput" rows="5" class="scroll-slim w-full resize-none rounded-xl border border-slate-200 bg-slate-50/60 p-3 text-sm leading-relaxed text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-500/10" placeholder="Nhập đề bài bất kỳ: toán, lý, hóa, sinh, văn, ngoại ngữ...">Cho hình chóp S.ABCD đáy ABCD là hình vuông cạnh a, SA ⊥ (ABCD), SA = a√2.
+                <textarea id="geometryProblem" rows="5" class="scroll-slim w-full resize-none rounded-xl border border-slate-200 bg-slate-50/60 p-3 text-sm leading-relaxed text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-500/10" placeholder="Nhập đề hình học cần dựng...">Cho hình chóp S.ABCD đáy ABCD là hình vuông cạnh a, SA ⊥ (ABCD), SA = a√2.
 a) Tính góc giữa SC và (ABCD).
 b) Thiết diện (P) qua A và ⊥ SC.</textarea>
-                <div class="mt-3 grid grid-cols-2 gap-2">
-                  <button id="studyCamera" class="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100">Chụp/quét rồi giải</button>
-                  <input id="studyImageFile" type="file" accept="image/*" capture="environment" class="sr-only" />
-                  <button id="studySolve" class="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 px-3 py-2.5 text-sm font-semibold text-white shadow-lift hover:brightness-105">Giải AI + tìm web</button>
-                  <button id="studyGoogle" class="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Chỉ tìm trên Google</button>
-                </div>
-                <section id="studyAnswer" class="mt-4 hidden rounded-xl border border-emerald-200 bg-emerald-50/60 p-4" aria-live="polite">
-                  <div id="studyAnswerTitle" class="font-semibold text-slate-800"></div>
-                  <div id="studyAnswerStatus" class="mt-1 text-xs text-slate-500"></div>
-                  <div id="studyAnswerSteps" class="mt-3 space-y-3 text-sm leading-relaxed text-slate-700"></div>
-                  <div id="studyAnswerFinal" class="mt-3 border-t border-emerald-200 pt-3 text-sm font-semibold text-slate-800"></div>
-                  <div id="studyAnswerNotes" class="mt-2 text-xs text-amber-800"></div>
-                  <div class="mt-4 border-t border-emerald-200 pt-3">
-                    <p class="text-xs font-medium text-slate-600">Lời giải này thế nào? Phản hồi được lưu trên thiết bị để tạo bộ mẫu cải thiện.</p>
-                    <div class="mt-2 flex flex-wrap gap-2">
-                      <button id="studyGood" type="button" class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700">👍 Đúng / hữu ích</button>
-                      <button id="studyBad" type="button" class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700">👎 Sai / thiếu</button>
-                      <button id="studyExportFeedback" type="button" class="ml-auto rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-medium text-blue-700">Xuất dữ liệu cải thiện</button>
-                    </div>
-                    <div id="studyCorrectionWrap" class="mt-2 hidden">
-                      <textarea id="studyCorrection" rows="3" class="w-full rounded-lg border border-slate-200 bg-white p-2 text-xs outline-none focus:border-blue-400" placeholder="Ghi đáp án/lập luận đã kiểm chứng để dùng làm mẫu sửa lỗi..."></textarea>
-                      <button id="studySaveFeedback" type="button" class="mt-2 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white">Lưu phản hồi</button>
-                    </div>
-                    <p id="studyFeedbackStatus" class="mt-2 text-xs text-slate-500"></p>
-                  </div>
-                </section>
                 <button id="build3d" class="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lift transition hover:-translate-y-px hover:brightness-105 active:translate-y-0">
-                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v4M3 5h4M13 3l1.9 5.1L20 10l-5.1 1.9L13 17l-1.9-5.1L6 10l5.1-1.9L13 3Z"/></svg>
-                  Dựng &amp; Bóc Tách 3D
+                  Dựng &amp; Bóc Tách Hình
                 </button>
                 <p id="buildStatus" class="mt-2 hidden items-center gap-1.5 text-xs font-medium"></p>
               </div>
-
               <!-- Coordinate entities -->
               <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
                 <div class="mb-3 flex items-center justify-between">
@@ -407,6 +376,53 @@ b) Thiết diện (P) qua A và ⊥ SC.</textarea>
               </div>
             </div>
 
+          </div>
+        </section>
+
+        <!-- ========= TAB: MULTI-SUBJECT SOLVER ========= -->
+        <section id="tab-study" class="tab-panel" role="tabpanel" aria-label="Giải bài đa môn">
+          <div class="mx-auto grid max-w-6xl grid-cols-1 gap-5 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+            <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft sm:p-6">
+              <div class="mb-4">
+                <p class="text-xs font-semibold uppercase tracking-wider text-blue-600">Trợ giảng AI</p>
+                <h2 class="mt-1 text-lg font-semibold text-slate-900">Nhập hoặc chụp đề bài</h2>
+                <p class="mt-1 text-sm text-slate-500">Chọn môn hoặc để tự nhận dạng. AI giải theo từng bước và mở Google để bạn đối chiếu.</p>
+              </div>
+              <label for="studySubject" class="mb-1.5 block text-xs font-medium text-slate-500">Môn học / ngôn ngữ</label>
+              <select id="studySubject" class="mb-3 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10">
+                <option value="auto">Tự nhận dạng môn</option>
+                <option value="math">Toán</option><option value="physics">Vật lý</option><option value="chemistry">Hóa học</option><option value="biology">Sinh học</option>
+                <option value="literature">Ngữ văn</option><option value="english">Tiếng Anh</option><option value="chinese_simplified">Tiếng Trung (Giản thể)</option><option value="chinese_traditional">Tiếng Trung phồn thể (Đài Loan)</option>
+                <option value="history">Lịch sử</option><option value="geography">Địa lý</option><option value="civics">GDCD / Kinh tế &amp; Pháp luật</option><option value="informatics">Tin học</option><option value="other">Môn khác</option>
+              </select>
+              <textarea id="studyProblem" rows="9" class="scroll-slim w-full resize-y rounded-xl border border-slate-200 bg-slate-50/60 p-3 text-sm leading-relaxed text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-500/10" placeholder="Nhập đề bài bất kỳ hoặc chụp ảnh đề..."></textarea>
+              <div class="mt-3 grid grid-cols-2 gap-2">
+                <button id="studyCamera" class="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100">Chụp/quét đề</button>
+                <input id="studyImageFile" type="file" accept="image/*" capture="environment" class="sr-only" />
+                <button id="studySolve" class="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 px-3 py-2.5 text-sm font-semibold text-white shadow-lift hover:brightness-105">Giải AI + tìm web</button>
+                <button id="studyGoogle" class="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Chỉ tìm trên Google</button>
+              </div>
+            </div>
+            <section id="studyAnswer" class="min-h-64 rounded-2xl border border-slate-200 bg-white p-5 shadow-soft sm:p-6" aria-live="polite">
+              <h2 id="studyAnswerTitle" class="font-semibold text-slate-800">Lời giải sẽ hiển thị tại đây</h2>
+              <div id="studyAnswerStatus" class="mt-1 text-xs text-slate-500">Nhập hoặc chụp đề rồi chọn “Giải AI + tìm web”.</div>
+              <div id="studyAnswerSteps" class="mt-3 space-y-3 text-sm leading-relaxed text-slate-700"></div>
+              <div id="studyAnswerFinal" class="mt-3 border-t border-slate-100 pt-3 text-sm font-semibold text-slate-800"></div>
+              <div id="studyAnswerNotes" class="mt-2 text-xs text-amber-800"></div>
+              <div class="mt-4 border-t border-slate-100 pt-3">
+                <p class="text-xs font-medium text-slate-600">Phản hồi giúp tạo mẫu cải thiện; dữ liệu lưu trên thiết bị.</p>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <button id="studyGood" type="button" class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700">👍 Đúng / hữu ích</button>
+                  <button id="studyBad" type="button" class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700">👎 Sai / thiếu</button>
+                  <button id="studyExportFeedback" type="button" class="ml-auto rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-medium text-blue-700">Xuất mẫu sửa</button>
+                </div>
+                <div id="studyCorrectionWrap" class="mt-2 hidden">
+                  <textarea id="studyCorrection" rows="4" class="w-full rounded-lg border border-slate-200 bg-white p-2 text-sm outline-none focus:border-blue-400" placeholder="Nhập lời giải đã kiểm chứng để làm mẫu sửa..."></textarea>
+                  <button id="studySaveFeedback" type="button" class="mt-2 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white">Lưu phản hồi</button>
+                </div>
+                <p id="studyFeedbackStatus" class="mt-2 text-xs text-slate-500"></p>
+              </div>
+            </section>
           </div>
         </section>
 
