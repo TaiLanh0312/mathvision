@@ -53,7 +53,9 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Build debug APK
-        run: npm run android:apk
+        run: |
+          chmod +x android/gradlew
+          npm run android:apk
 
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
