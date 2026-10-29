@@ -55,7 +55,14 @@ jobs:
       - name: Build debug APK
         run: |
           chmod +x android/gradlew
-          npm run android:apk
+          for attempt in 1 2 3; do
+            npm run android:apk && exit 0
+            if [ "$attempt" -lt 3 ]; then
+              echo "Build failed; retrying after a short pause ($attempt/3)."
+              sleep 20
+            fi
+          done
+          exit 1
 
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
