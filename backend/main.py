@@ -92,7 +92,7 @@ async def health():
 
 
 @app.post("/api/geometry/parse")
-async def parse(req: ParseRequest):
+def parse(req: ParseRequest):
     problem = (req.problem or "").strip()
     if not problem:
         return JSONResponse({"error": "Đề bài trống."}, status_code=400)
@@ -123,7 +123,7 @@ async def parse(req: ParseRequest):
 
 
 @app.post("/api/graph/grade")
-async def grade(req: GradeRequest):
+def grade(req: GradeRequest):
     if not req.image:
         return JSONResponse({"error": "Thiếu ảnh bài thi."}, status_code=400)
     try:
@@ -139,7 +139,7 @@ async def grade(req: GradeRequest):
 
 
 @app.post("/api/solution/grade")
-async def grade_sol(req: GradeRequest):
+def grade_sol(req: GradeRequest):
     if not req.image:
         return JSONResponse({"error": "Thiếu ảnh bài giải."}, status_code=400)
     try:
@@ -155,7 +155,7 @@ async def grade_sol(req: GradeRequest):
 
 
 @app.post("/api/ocr")
-async def ocr(req: OcrRequest):
+def ocr(req: OcrRequest):
     if not req.image:
         return JSONResponse({"error": "Thiếu ảnh."}, status_code=400)
     try:
@@ -171,7 +171,7 @@ async def ocr(req: OcrRequest):
 
 
 @app.post("/api/geometry/solve")
-async def solve(req: SolveRequest):
+def solve(req: SolveRequest):
     problem = (req.problem or "").strip()
     if not problem:
         return JSONResponse({"error": "Đề bài trống."}, status_code=400)
@@ -203,22 +203,32 @@ async def solve(req: SolveRequest):
                 errors = validate_solution_spec(result, points, problem=problem)
         if errors:
             return JSONResponse({"error": "Lời giải AI còn thiếu hoặc sai cấu trúc sau khi tự sửa.", "details": errors}, status_code=422)
-        reviewed = verify_detailed(problem, points, constraints, result)
+        review_error = None
+        try:
+            reviewed = verify_detailed(problem, points, constraints, result)
+        except Exception as exc:
+            reviewed = None
+            review_error = f"AI kiểm tra độc lập gặp lỗi: {type(exc).__name__}: {exc}"
         if reviewed is None:
-            return JSONResponse({"error": "AI kiểm tra độc lập không phản hồi; lời giải chưa được xác nhận."}, status_code=503)
+            # Preserve the valid first-pass solution. A failed second call means
+            # it is unverified, not that the already generated solution vanished.
+            reviewed = dict(result)
+            reviewed["status"] = "uncertain"
+            reviewed["issues"] = [review_error or "AI kiểm tra độc lập không phản hồi; lời giải chưa được xác nhận."]
         if req.text_only:
             reviewed = _remove_solution_drawings(reviewed)
         errors = validate_solution_spec(reviewed, points, require_status=True, problem=problem)
         if errors:
             return JSONResponse({"error": "Lời giải sau kiểm tra có cấu trúc không hợp lệ.", "details": errors}, status_code=422)
-        reviewed["source"] = "gemini-independent-review"
+        reviewed["source"] = ("gemini-independent-review" if reviewed.get("status") != "uncertain"
+                               or not review_error else "gemini-unverified")
         return reviewed
     except Exception as exc:
         return JSONResponse({"error": f"{type(exc).__name__}: {exc}"}, status_code=500)
 
 
 @app.post("/api/latex/ocr")
-async def latex_ocr(req: OcrRequest):
+def latex_ocr(req: OcrRequest):
     if not req.image:
         return JSONResponse({"error": "Thiếu ảnh."}, status_code=400)
     try:

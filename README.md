@@ -40,11 +40,12 @@ Khi bấm "Dựng & Bóc Tách 3D":
 3. Lời giải được tạo, kiểm tra cấu trúc, rồi một lượt AI suy luận độc lập giải lại. Nếu chưa
    xác nhận được, giao diện đánh dấu chưa kiểm chứng; không dùng lời giải/hình mẫu thay thế.
 
-Luồng hình học mặc định dùng `gemini-3.8-flash`; đề ngắn dùng suy luận mức vừa, đề dài/nhiều ý
-hoặc có cấu trúc chứng minh phức tạp tự nâng lên mức cao. Có thể đặt
-`GEMINI_GEOMETRY_MODEL` và `GEMINI_REASONING_MODEL` trên Render để chọn model khác có hỗ trợ
-Gemini API. Lời giải vẫn được một lượt độc lập kiểm tra; mức suy luận cao tăng thời gian và lượng token sử dụng. Đây vẫn là hệ thống AI có
-kiểm tra cấu trúc/toạ độ, chưa phải bộ chứng minh tổng quát; cần đánh giá trên bộ đề chuẩn trước
+Luồng hình học mặc định dùng `gemini-flash-lite-latest` để giảm thời gian phản hồi; cấu hình
+`GEMINI_GEOMETRY_MODEL` và `GEMINI_REASONING_MODEL` có thể chọn model khác. Các endpoint gọi
+Gemini chạy ngoài event loop để một yêu cầu chậm không chặn các request khác. Lời giải vẫn được
+một lượt độc lập kiểm tra, nên cần hai lượt Gemini; nếu lượt kiểm tra lỗi, lời giải đầu được giữ
+nhưng đánh dấu chưa xác minh. Đây vẫn là hệ thống AI có kiểm tra cấu trúc/toạ độ, chưa phải bộ
+chứng minh tổng quát; cần đánh giá trên bộ đề chuẩn trước
 khi xem là đáng tin cậy cho mọi dạng bài.
 
 Tất cả đều trả về cùng một *scene spec* JSON khai báo (`points / solidEdges /

@@ -762,7 +762,9 @@ async function parseAndBuild() {
   } catch (err) {
     if (requestId !== geometryRequestId) return;
     clearCurrentGeometry('Chưa dựng được hình cho đề này. Kiểm tra backend và dữ kiện rồi thử lại.');
-    setStatus(`AI chưa thể dựng hình: ${err.message}.`, 'warn');
+    // Scene parsing and solving are separate Gemini calls. Keep the text-only
+    // solve path alive when the scene response is malformed or rejected.
+    await solveWithoutFigure(problem, requestId, err.message);
   } finally { if (requestId === geometryRequestId) busy(false); }
 }
 
