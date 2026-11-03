@@ -310,6 +310,69 @@ function genQuadPyramid(a, { baseKind = 'square', apexMode = 'center', hExpr = n
   };
 }
 
+/* Toạ độ đáy tứ giác (z=0, A tại gốc) theo loại. */
+function quadBaseCoords(a, baseKind, b) {
+  if (baseKind === 'rect') return { A: [0,0,0], B: [a,0,0], C: [a,b,0], D: [0,b,0] };
+  if (baseKind === 'para') return { A: [0,0,0], B: [a,0,0], C: [a+0.42*a,0.72*a,0], D: [0.42*a,0.72*a,0] };
+  if (baseKind === 'rhombus') { const cx = a*Math.cos(Math.PI/3), cy = a*Math.sin(Math.PI/3); return { A: [0,0,0], B: [a,0,0], C: [a+cx,cy,0], D: [cx,cy,0] }; }
+  if (baseKind === 'trap') return { A: [0,0,0], B: [a,0,0], C: [a*0.72,0.68*a,0], D: [a*0.28,0.68*a,0] };
+  return { A: [0,0,0], B: [a,0,0], C: [a,a,0], D: [0,a,0] }; // square
+}
+
+/* Lăng trụ đáy TỨ GIÁC (đứng): ABCD.A'B'C'D'. */
+function quadPrism(a, { baseKind = 'para', hExpr = null, bExpr = null } = {}) {
+  const b = bExpr ? lengthToNum(bExpr, a) : a * 0.66;
+  const base = quadBaseCoords(a, baseKind, b);
+  const h = hExpr ? lengthToNum(hExpr, a) : a * 1.4;
+  const nm = ['A', 'B', 'C', 'D'];
+  const P = {};
+  nm.forEach((n) => { P[n] = base[n]; P[n + "'"] = [base[n][0], base[n][1], h]; });
+  const labels = autoBaseLabels(P, nm);
+  nm.forEach((n) => { labels[n + "'"] = [labels[n][0], 0.2, labels[n][2]]; });
+  const names = { square: 'Hình vuông', rect: 'Hình chữ nhật', para: 'Hình bình hành', rhombus: 'Hình thoi', trap: 'Hình thang' };
+  return {
+    kind: 'quad-prism', points: P, base: nm.slice(), top: nm.map((n) => n + "'"),
+    solidEdges: [['A','B'],['B','C'],["A'","B'"],["B'","C'"],["C'","D'"],["D'","A'"],['A',"A'"],['B',"B'"],['C',"C'"]],
+    dashedEdges: [['C','D'],['D','A'],['D',"D'"]],
+    faces: [['A','B','C','D'], ["A'","B'","C'","D'"], ['A','B',"B'","A'"], ['B','C',"C'","B'"], ['C','D',"D'","C'"], ['D','A',"A'","D'"]],
+    labels, title: `Lăng trụ ABCD.A′B′C′D′ (đáy ${names[baseKind] || 'tứ giác'})`, meta: 'Oxyz',
+    assumptions: hExpr ? [] : ['Chưa có chiều cao lăng trụ; hình sơ đồ dùng h = 1.4a.'],
+  };
+}
+
+/* Chóp CỤT: đáy lớn (z=0) + đáy nhỏ (z=h) đồng dạng tâm O. shape: 'tri' | 'quad'. */
+function frustum(a, { shape = 'quad', hExpr = null, ratio = 0.56 } = {}) {
+  const h = hExpr ? lengthToNum(hExpr, a) : a * 1.3;
+  const P = {}, solid = [], dashed = [], faces = [], labels = {};
+  if (shape === 'tri') {
+    const r = a / Math.sqrt(3), ang = (k) => Math.PI/2 + k*2*Math.PI/3;
+    const nm = ['A','B','C'];
+    nm.forEach((n, k) => {
+      P[n] = [r*Math.cos(ang(k)), r*Math.sin(ang(k)), 0];
+      P[n + "'"] = [r*ratio*Math.cos(ang(k)), r*ratio*Math.sin(ang(k)), h];
+    });
+    solid.push(['A','B'],["A'","B'"],["B'","C'"],["C'","A'"],['A',"A'"],['B',"B'"]);
+    dashed.push(['B','C'],['C','A'],['C',"C'"]);
+    faces.push(['A','B','C'], ["A'","B'","C'"], ['A','B',"B'","A'"], ['B','C',"C'","B'"], ['C','A',"A'","C'"]);
+    nm.forEach((n, k) => { labels[n] = [0.26*Math.cos(ang(k)), -0.12, 0.26*Math.sin(ang(k))]; labels[n+"'"] = [0.2*Math.cos(ang(k)), 0.18, 0.2*Math.sin(ang(k))]; });
+    return { kind: 'frustum-tri', points: P, base: nm.slice(), top: nm.map((n)=>n+"'"),
+      solidEdges: solid, dashedEdges: dashed, faces, labels,
+      title: 'Chóp cụt tam giác đều ABC.A′B′C′', meta: 'Oxyz [O = tâm đáy]',
+      assumptions: hExpr ? [] : ['Chưa có chiều cao; hình sơ đồ dùng h = 1.3a.'] };
+  }
+  const s = a / 2, nm = ['A','B','C','D'];
+  const corner = { A: [-s,-s], B: [s,-s], C: [s,s], D: [-s,s] };
+  nm.forEach((n) => { P[n] = [corner[n][0], corner[n][1], 0]; P[n + "'"] = [corner[n][0]*ratio, corner[n][1]*ratio, h]; });
+  solid.push(['A','B'],['B','C'],["A'","B'"],["B'","C'"],["C'","D'"],["D'","A'"],['A',"A'"],['B',"B'"],['C',"C'"]);
+  dashed.push(['C','D'],['D','A'],['D',"D'"]);
+  faces.push(['A','B','C','D'], ["A'","B'","C'","D'"], ['A','B',"B'","A'"], ['B','C',"C'","B'"], ['C','D',"D'","C'"], ['D','A',"A'","D'"]);
+  nm.forEach((n) => { labels[n] = [corner[n][0]*0.4, -0.12, corner[n][1]*0.4]; labels[n+"'"] = [corner[n][0]*0.3, 0.18, corner[n][1]*0.3]; });
+  return { kind: 'frustum-quad', points: P, base: nm.slice(), top: nm.map((n)=>n+"'"),
+    solidEdges: solid, dashedEdges: dashed, faces, labels,
+    title: 'Chóp cụt tứ giác đều ABCD.A′B′C′D′', meta: 'Oxyz [O = tâm đáy]',
+    assumptions: hExpr ? [] : ['Chưa có chiều cao; hình sơ đồ dùng h = 1.3a.'] };
+}
+
 /* ============================================================
    SOLVERS cho câu hỏi — thêm "layers" vào spec
    ============================================================ */
@@ -713,21 +776,39 @@ function detectFigure(t) {
   if (/h[iì]nh\s*tr[uụ]|kh[oố]i\s*tr[uụ]|tr[uụ]\s*tr[oò]n/.test(s)) return cylinder(a, hE);
   if (/h[iì]nh\s*c[aầ]u|kh[oố]i\s*c[aầ]u|m[aặ]t\s*c[aầ]u/.test(s)) return sphere(a);
 
+  // CHÓP CỤT (frustum) — nhận trước nhánh "chóp".
+  if (/ch[oó]p\s*c[uụ]t/.test(s)) {
+    const shape = (/tam\s*giác/.test(s) || /\babc\b/.test(s) && !/abcd/.test(s)) ? 'tri' : 'quad';
+    return frustum(a, { shape, hExpr: hE });
+  }
+
   if (/lập\s*phương/.test(s)) return cube(a);
   if (/hộp\s*(?:chữ\s*nhật)?/.test(s)) return box(a, a*0.7, a*1.1);
   if (/lăng\s*trụ/.test(s)) {
     if (/l[uụ]c\s*giác/.test(s)) return hexPrism(a, hE);
+    const hM = s.match(/(?:chiều\s*cao|cạnh\s*bên)\s*(?:bằng|là|=)?\s*([0-9]*a(?:√\d+)?|[0-9.]+)/);
+    const hPrism = hM ? hM[1] : hE;
     // Lăng trụ XIÊN: hình chiếu của A'/đỉnh trên xuống tâm/trọng tâm/tâm ngoại tiếp.
     const oblique = /h[iì]nh\s*chi[eế]u[^.]*?(t[aâ]m|tr[oọ]ng\s*t[aâ]m|ngo[aạ]i\s*ti[eế]p)/.test(s)
                  || /chi[eế]u[^.]*?\btr[uù]ng[^.]*?\bo\b/.test(s);
     if (oblique) {
       const aa = s.match(/aa'?\s*=\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/);
-      if (!/tam\s*giác\s*đều/.test(s) || !aa) return null;
-      return obliquePrismCircum(a, aa[1]);
+      if (/tam\s*giác\s*đều/.test(s) && aa) return obliquePrismCircum(a, aa[1]);
     }
-    if (!/lăng\s*trụ\s*đứng/.test(s) || !/tam\s*giác\s*đều/.test(s)) return null;
-    const hM = s.match(/(?:chiều\s*cao|cạnh\s*bên)\s*(?:bằng|là|=)?\s*([0-9]*a(?:√\d+)?|[0-9.]+)/);
-    return triPrism(a, hM ? hM[1] : null);
+    // Đáy TỨ GIÁC: vuông/chữ nhật/bình hành/thoi/thang hoặc tên ABCD.A'B'C'D'.
+    const quadBase = /t[uứ]\s*giác|b[iì]nh\s*h[aà]nh|thoi|thang|ch[uữ]\s*nh[aậ]t|h[iì]nh\s*vu[oô]ng|abcd\.?a/.test(s);
+    if (quadBase) {
+      const baseKind = /thoi/.test(s) ? 'rhombus'
+        : /ch[uữ]\s*nh[aậ]t/.test(s) ? 'rect'
+        : /b[iì]nh\s*h[aà]nh/.test(s) ? 'para'
+        : /thang/.test(s) ? 'trap'
+        : /vu[oô]ng/.test(s) ? 'square' : 'para';
+      let bExpr = null;
+      if (baseKind === 'rect') { const bm = s.match(/\b(?:ad|bc)\s*=\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/); bExpr = bm ? bm[1] : null; }
+      return quadPrism(a, { baseKind, hExpr: hPrism, bExpr });
+    }
+    // Đáy tam giác đều (đứng) -> triPrism; tam giác khác vẫn dựng sơ đồ bằng triPrism.
+    return triPrism(a, hPrism);
   }
   if (/t[uứ]\s*di[eệ]n/.test(s)) return tetrahedron(a);
   if (/s\.abc\b/.test(s) || (/tam\s*giác/.test(s) && /chóp/.test(s))) {
@@ -892,6 +973,45 @@ const coordStr = (p) => `(${p.map((c) => Math.round(c*100)/100).join(', ')})`;
 const pointStr = (F, names) => names.map((n) => n).join(' → ');
 
 /* ============================================================
+   THỂ TÍCH deterministic — tính từ toạ độ (diện tích đáy × chiều cao…)
+   ============================================================ */
+function polyAreaXY(pts, names) {
+  let s = 0;
+  for (let i = 0; i < names.length; i++) {
+    const p = pts[names[i]], q = pts[names[(i + 1) % names.length]];
+    if (!p || !q) return 0;
+    s += p[0] * q[1] - q[0] * p[1];
+  }
+  return Math.abs(s) / 2;
+}
+function figureVolume(F) {
+  const P = F.points, k = F.kind;
+  if (F.dim2d) return null;
+  if (k === 'cone') return { v: Math.PI * P.A[0] ** 2 * P.S[2] / 3, formula: 'V = (1/3)·π·R²·h' };
+  if (k === 'cylinder') return { v: Math.PI * P.A[0] ** 2 * P["O'"][2], formula: 'V = π·R²·h' };
+  if (k === 'sphere') return { v: 4 / 3 * Math.PI * P.A[0] ** 3, formula: 'V = (4/3)·π·R³' };
+  const base = F.base && F.base.length ? F.base : null;
+  if (!base) return null;
+  const S1 = polyAreaXY(P, base);
+  if (/frustum/.test(k) && F.top) {
+    const S2 = polyAreaXY(P, F.top), h = Math.abs(P[F.top[0]][2]);
+    return { v: h / 3 * (S1 + S2 + Math.sqrt(S1 * S2)), formula: 'V = (h/3)·(S₁ + S₂ + √(S₁·S₂))' };
+  }
+  if (F.top && F.top.length) return { v: S1 * Math.abs(P[F.top[0]][2]), formula: 'V = S_đáy · h' };
+  if (F.apex) return { v: S1 * Math.abs(P[F.apex][2]) / 3, formula: 'V = (1/3)·S_đáy · h' };
+  return null;
+}
+function fmtCoef(x) {
+  const r = Math.round(x);
+  if (Math.abs(x - r) < 1e-6) return String(r);
+  for (let d = 2; d <= 24; d++) {
+    const n = x * d;
+    if (Math.abs(n - Math.round(n)) < 1e-6) return `${Math.round(n)}/${d}`;
+  }
+  return '≈' + (Math.round(x * 1000) / 1000);
+}
+
+/* ============================================================
    MAIN
    ============================================================ */
 export function solveProblem(text) {
@@ -949,6 +1069,26 @@ export function solveProblem(text) {
     entities.push({ label: 'Khoảng cách', value: `${Q.distance.from} → (Q)`, detail: lbl, tone: 'blue' });
     steps.push({ title: `Khoảng cách ${Q.distance.from} → (Q)`,
       body: `${lbl}  —  tính bằng |n·(${Q.distance.from}−E)| / |n|, n là pháp tuyến của (Q).`, tone: 'blue' });
+  }
+
+  // ---- THỂ TÍCH (deterministic) ----
+  const vol = figureVolume(F);
+  if (vol && vol.v > EPS) {
+    // Đơn vị: nếu đề dùng 'a' làm cạnh -> quy về hệ số của a³; nếu cho số cụ thể -> giá trị số.
+    const aValue = t.match(/(?:^|\s)a\s*=\s*(\d+(?:\.\d+)?)(?:\s|$)/i);
+    const aMatch = t.match(/cạnh(?:\s*đáy)?\s*(?:bằng|là|=)?\s*([0-9]*a(?:√\d+)?|a(?:√\d+)?|\d+(?:\.\d+)?(?:√\d+)?)/i);
+    const literalSize = !!aValue || (aMatch && !/a/i.test(aMatch[1]));
+    const schematic = (F.assumptions || []).length > 0;
+    let valueStr;
+    if (literalSize) {
+      valueStr = `${Math.round(vol.v * 1000) / 1000}` + ' (đvtt)';
+    } else {
+      valueStr = `${fmtCoef(vol.v / (A_UNIT ** 3))}·a³`;
+    }
+    const tone = schematic ? 'amber' : 'blue';
+    const note = schematic ? ' (sơ đồ — đề chưa đủ dữ kiện, bấm "Giải kỹ (AI)" để chắc chắn)' : '';
+    entities.push({ label: 'Thể tích', value: 'V = ' + valueStr, detail: vol.formula + note, tone });
+    steps.push({ title: 'Tính thể tích', body: `${vol.formula}  ⇒  V = ${valueStr}.${note}`, tone });
   }
 
   // ---- KẾ HOẠCH DỰNG HÌNH THEO TỪNG BƯỚC ----
