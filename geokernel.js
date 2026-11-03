@@ -222,6 +222,94 @@ function box(a, b, c) {
   return t;
 }
 
+/* ---- Nhãn tự động: đẩy ra ngoài theo hướng từ tâm đáy (mặt phẳng x-y) ---- */
+function autoBaseLabels(pts, names, k = 0.34) {
+  const c = scale(names.reduce((s, n) => add(s, pts[n]), [0, 0, 0]), 1 / names.length);
+  const out = {};
+  names.forEach((n) => {
+    const d = sub(pts[n], c);
+    const l = Math.hypot(d[0], d[1]) || 1;
+    out[n] = [(d[0] / l) * k, -0.12, (d[1] / l) * k];
+  });
+  return out;
+}
+
+/* ============================================================
+   BUILDER TỔNG QUÁT — luôn dựng được chóp khi nhận ra đáy,
+   kể cả khi đề thiếu dữ kiện chính xác (dùng giá trị sơ đồ).
+   ============================================================ */
+function genTriPyramid(a, { baseKind = 'thuong', apexMode = 'centroid', hExpr = null } = {}) {
+  // Đáy ABC trong mặt z = 0, A tại gốc.
+  let A = [0, 0, 0], B, C;
+  if (baseKind === 'deu') { B = [a, 0, 0]; C = [a / 2, a * Math.sqrt(3) / 2, 0]; }
+  else if (baseKind === 'vuong') { B = [a, 0, 0]; C = [0, a, 0]; }        // vuông tại A
+  else if (baseKind === 'can') { B = [a, 0, 0]; C = [a / 2, a * 0.95, 0]; } // cân tại C (CA = CB)
+  else { B = [a, 0, 0]; C = [a * 0.32, a * 0.82, 0]; }                    // thường
+  const h = hExpr ? lengthToNum(hExpr, a) : a * 1.2;
+
+  let S, foot, title, rightAngleAt = null;
+  const assumptions = [];
+  const P = { A, B, C };
+  if (apexMode === 'saPerp') {
+    S = [0, 0, h]; foot = 'A'; title = 'Chóp S.ABC (SA⊥đáy)';
+    if (baseKind === 'vuong') rightAngleAt = { at: 'A', from: 'B', to: 'C' };
+    if (!hExpr) assumptions.push('Chưa có SA/chiều cao; hình sơ đồ dùng SA = 1.2a.');
+  } else {
+    const O = scale(add(add(A, B), C), 1 / 3);
+    S = [O[0], O[1], h]; foot = 'O'; title = 'Chóp S.ABC';
+    P.O = [O[0], O[1], 0];
+    if (!hExpr) assumptions.push('Chưa có chiều cao; hình sơ đồ dùng h = 1.2a.');
+  }
+  P.S = S;
+  const labels = autoBaseLabels(P, ['A', 'B', 'C']);
+  labels.S = [0, 0.14, 0.26];
+  return {
+    kind: 'gen-tri-pyramid', points: P, apex: 'S', footOfApex: foot,
+    base: ['A', 'B', 'C'], baseCenter: scale(add(add(A, B), C), 1 / 3),
+    solidEdges: [['A', 'B'], ['B', 'C'], ['S', 'A'], ['S', 'B'], ['S', 'C']],
+    dashedEdges: [['C', 'A']],
+    faces: [['A', 'B', 'C'], ['S', 'A', 'B'], ['S', 'B', 'C'], ['S', 'C', 'A']],
+    labels, title, meta: apexMode === 'saPerp' ? 'Oxyz [A = Gốc]' : 'Oxyz [O = tâm đáy]',
+    assumptions, rightAngleAt,
+  };
+}
+
+function genQuadPyramid(a, { baseKind = 'square', apexMode = 'center', hExpr = null, bExpr = null } = {}) {
+  const b = bExpr ? lengthToNum(bExpr, a) : a * 0.66;
+  let A = [0, 0, 0], B, C, D;
+  if (baseKind === 'rect') { B = [a, 0, 0]; C = [a, b, 0]; D = [0, b, 0]; }
+  else if (baseKind === 'para') { B = [a, 0, 0]; C = [a + 0.42 * a, 0.72 * a, 0]; D = [0.42 * a, 0.72 * a, 0]; }
+  else if (baseKind === 'rhombus') { const cx = a * Math.cos(Math.PI / 3), cy = a * Math.sin(Math.PI / 3); B = [a, 0, 0]; C = [a + cx, cy, 0]; D = [cx, cy, 0]; }
+  else if (baseKind === 'trap') { B = [a, 0, 0]; C = [a * 0.72, 0.68 * a, 0]; D = [a * 0.28, 0.68 * a, 0]; }
+  else { B = [a, 0, 0]; C = [a, a, 0]; D = [0, a, 0]; }                   // square (mặc định)
+  const h = hExpr ? lengthToNum(hExpr, a) : a * Math.SQRT2;
+
+  let S, foot, title;
+  const assumptions = [];
+  const P = { A, B, C, D };
+  if (apexMode === 'saPerp') {
+    S = [0, 0, h]; foot = 'A'; title = 'Chóp S.ABCD (SA⊥đáy)';
+    if (!hExpr) assumptions.push('Chưa có SA/chiều cao; hình sơ đồ dùng SA = a√2.');
+  } else {
+    const O = scale([A[0] + B[0] + C[0] + D[0], A[1] + B[1] + C[1] + D[1], 0], 1 / 4);
+    S = [O[0], O[1], h]; foot = 'O'; title = 'Chóp S.ABCD';
+    P.O = [O[0], O[1], 0];
+    if (!hExpr) assumptions.push('Chưa có chiều cao; hình sơ đồ dùng h = a√2.');
+  }
+  P.S = S;
+  const labels = autoBaseLabels(P, ['A', 'B', 'C', 'D']);
+  labels.S = [0, 0.14, 0.26];
+  return {
+    kind: 'gen-quad-pyramid', points: P, apex: 'S', footOfApex: foot,
+    base: ['A', 'B', 'C', 'D'], baseCenter: scale([A[0] + C[0], A[1] + C[1], 0], 1 / 2),
+    solidEdges: [['A', 'B'], ['B', 'C'], ['S', 'A'], ['S', 'B'], ['S', 'C']],
+    dashedEdges: [['C', 'D'], ['D', 'A'], ['S', 'D']],
+    faces: [['A', 'B', 'C', 'D'], ['S', 'A', 'B'], ['S', 'B', 'C'], ['S', 'C', 'D'], ['S', 'D', 'A']],
+    labels, title, meta: apexMode === 'saPerp' ? 'Oxyz [A = Gốc]' : 'Oxyz [O = tâm đáy]',
+    assumptions,
+  };
+}
+
 /* ============================================================
    SOLVERS cho câu hỏi — thêm "layers" vào spec
    ============================================================ */
@@ -644,7 +732,9 @@ function detectFigure(t) {
   if (/t[uứ]\s*di[eệ]n/.test(s)) return tetrahedron(a);
   if (/s\.abc\b/.test(s) || (/tam\s*giác/.test(s) && /chóp/.test(s))) {
     const saPerp = /s\s*a\s*(?:vuông\s*góc|⊥)/.test(s) || /(?:vuông\s*góc|⊥)[^.]*\(abc\)/.test(s);
-    if (saPerp && /vuông/.test(s)) {
+    // Đáy là TAM GIÁC VUÔNG (không nhầm với "SA vuông góc"): cần "tam giác vuông/vuông tại/vuông cân".
+    const baseRight = /tam\s*giác\s*vuông|vuông\s*t[aạ]i|vuông\s*c[aâ]n/.test(s);
+    if (saPerp && baseRight) {
       const saM = s.match(/sa\s*(?:=|bằng)\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/);
       const saExpr = saM ? saM[1] : '2a';
       const iso = /vuông\s*c[aâ]n/.test(s);
@@ -665,30 +755,49 @@ function detectFigure(t) {
       }
       return saPerpTriFrom(A, B, C, saExpr, a, `Chóp S.ABC (SA⊥, vuông tại ${R})`, R);
     }
-    if (!/ch[oó]p\s*đều/.test(s)) return null;
-    const lat = s.match(/cạnh\s*bên\s*(?:bằng|là|=)?\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/);
-    return regTriPyramid(a, lat ? lat[1] : null);
+    // Chóp tam giác đều (đỉnh trên tâm đáy)
+    if (/ch[oó]p\s*đều/.test(s) || /ch[oó]p\s*tam\s*giác\s*đều/.test(s)) {
+      const lat = s.match(/cạnh\s*bên\s*(?:bằng|là|=)?\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/);
+      return regTriPyramid(a, lat ? lat[1] : null);
+    }
+    // TỔNG QUÁT: chóp S.ABC bất kỳ (đáy đều/vuông/cân/thường) — luôn dựng được.
+    const baseKind = /đều/.test(s) ? 'deu' : baseRight ? 'vuong' : /c[aâ]n/.test(s) ? 'can' : 'thuong';
+    const hM = s.match(/sa\s*(?:=|bằng)\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/)
+      || s.match(/(?:chiều\s*cao|đường\s*cao|cao)\s*(?:bằng|là|=)?\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/);
+    return genTriPyramid(a, { baseKind, apexMode: saPerp ? 'saPerp' : 'centroid', hExpr: hM ? hM[1] : null });
   }
   if (/chóp|s\.abcd/.test(s)) {
-    if (/thoi/.test(s)) return null; // builder chưa suy đường chéo từ dữ kiện đề
     const regular = /t[uứ]\s*giác\s*đều/.test(s) || /ch[oó]p\s*đều/.test(s);
-    if (regular) {
-      const hM = s.match(/(?:s\s*o|(?:chiều|đường)\s*cao)\s*(?:=|bằng)?\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/);
-      const lM = s.match(/(?:cạnh\s*bên\s*(?:bằng|là|=)?|s\s*a\s*(?:=|bằng))\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/);
-      if (lM && lengthToNum(lM[1], a) + EPS < a / Math.sqrt(2)) return null;
-      if (hM && lM) {
-        const h = lengthToNum(hM[1], a), side = lengthToNum(lM[1], a);
-        if (Math.abs(side*side - (h*h + a*a/2)) > 1e-3 * Math.max(side*side, 1)) return null;
-      }
-      return regQuadPyramid(a, hM ? hM[1] : null, lM ? lM[1] : null);
-    }
-    if (/chữ\s*nhật/.test(s)) return null; // chưa trích đủ hai cạnh đáy
-    const squareBase = /đáy[^.]*?(?:hình\s*)?vuông|hình\s*vuông\s*abcd|abcd[^.]*hình\s*vuông/.test(s);
-    const saPerp = /s\s*a\s*(?:vuông\s*góc|⊥)[^.]*?(?:đáy|\(abcd\))/i.test(s);
-    if (!squareBase || !saPerp) return null;
     const hM = s.match(/s\s*a\s*(?:=|bằng)\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/)
-      || s.match(/(?:đường\s*cao|chiều\s*cao)\s*(?:=|bằng)?\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/);
-    return squarePyramid(a, hM ? hM[1] : null);
+      || s.match(/(?:s\s*o|(?:đường|chiều)\s*cao|cao)\s*(?:bằng|là|=)?\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/);
+    if (regular) {
+      const lM = s.match(/(?:cạnh\s*bên\s*(?:bằng|là|=)?|s\s*a\s*(?:=|bằng))\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/);
+      const hR = s.match(/(?:s\s*o|(?:chiều|đường)\s*cao)\s*(?:=|bằng)?\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/);
+      // Dữ kiện nhất quán -> dựng chính xác; nếu không -> vẫn vẽ sơ đồ chóp đều.
+      const okLat = !(lM && lengthToNum(lM[1], a) + EPS < a / Math.sqrt(2));
+      let okHL = true;
+      if (hR && lM) {
+        const h = lengthToNum(hR[1], a), side = lengthToNum(lM[1], a);
+        okHL = Math.abs(side * side - (h * h + a * a / 2)) <= 1e-3 * Math.max(side * side, 1);
+      }
+      if (okLat && okHL) return regQuadPyramid(a, hR ? hR[1] : null, lM ? lM[1] : null);
+      return genQuadPyramid(a, { baseKind: 'square', apexMode: 'center', hExpr: hR ? hR[1] : null });
+    }
+    const saPerp = /s\s*a\s*(?:vuông\s*góc|⊥)/i.test(s);
+    // TỔNG QUÁT: chóp S.ABCD đáy bất kỳ (vuông/chữ nhật/bình hành/thoi/thang) — luôn dựng được.
+    const baseKind = /thoi/.test(s) ? 'rhombus'
+      : /ch[uữ]\s*nh[aậ]t/.test(s) ? 'rect'
+      : /b[iì]nh\s*h[aà]nh/.test(s) ? 'para'
+      : /thang/.test(s) ? 'trap'
+      : 'square';
+    // Đáy vuông + SA⊥ -> builder vuông chính xác (có baseCenter, nhãn tinh chỉnh).
+    if (baseKind === 'square' && saPerp) return squarePyramid(a, hM ? hM[1] : null);
+    let bExpr = null;
+    if (baseKind === 'rect') {
+      const bm = s.match(/\b(?:ad|bc)\s*=\s*([0-9]*a(?:√\d+)?|\d+(?:\.\d+)?)/);
+      bExpr = bm ? bm[1] : null;
+    }
+    return genQuadPyramid(a, { baseKind, apexMode: saPerp ? 'saPerp' : 'center', hExpr: hM ? hM[1] : null, bExpr });
   }
   return null;
 }
@@ -804,12 +913,17 @@ export function solveProblem(text) {
   const working = { ...F.points, ...der.points };
   const Q = detectQuestions(t, F, working);
 
-  // Triết lý: kernel luôn DỰNG HÌNH chính xác khi nhận diện được khối/đáy.
+  // Triết lý: kernel LUÔN DỰNG HÌNH khi nhận diện được khối/đáy.
   // Phần giải khó (chứng minh, thể tích, khoảng cách tổng quát...) KHÔNG chặn việc vẽ —
   // người dùng bấm "Giải kỹ (AI)" để có lời giải đầy đủ.
-  // Chỉ nhường AI khi chính HÌNH còn phải giả định (không chắc toạ độ).
+  // Nếu HÌNH còn dữ kiện giả định (vd chưa cho chiều cao) mà đề lại hỏi góc/thiết diện:
+  // vẫn vẽ khối, nhưng KHÔNG khẳng định các đại lượng đó (chúng phụ thuộc dữ kiện chưa có)
+  // -> bỏ các lớp tính toán, nhường "Giải kỹ (AI)".
   if (F.assumptions?.length && (Q.layers.length || Q.distance)) {
-    return { ok: false, reason: 'assumptions-needed', assumptions: F.assumptions };
+    Q.layers = [];
+    Q.defaults = [];
+    Q.newPoints = {};
+    Q.distance = null;
   }
 
   const points = { ...working, ...Q.newPoints };
