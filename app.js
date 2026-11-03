@@ -457,25 +457,52 @@
   scanGFile && scanGFile.addEventListener('change', () =>
     scanGFile.files[0] && ocrImageToField(scanGFile.files[0], '#gradeProblem', scanG));
 
-  /* ---------- Topbar: Tạo bài mới / Lưu giáo án ---------- */
+  /* ---------- Topbar: Tạo bài mới ---------- */
   const newBtn = $('#newLesson');
   newBtn && newBtn.addEventListener('click', () => {
     if (location.hash.slice(1) !== 'studio') location.hash = 'studio';
     const ta = $('#tab-studio textarea');
-    if (ta) { ta.value = ''; ta.focus(); }
-  });
-  const saveBtn = $('#saveLesson');
-  saveBtn && saveBtn.addEventListener('click', () => {
-    const ta = $('#tab-studio textarea');
-    try {
-      localStorage.setItem('mathvision_lesson', JSON.stringify({ problem: ta ? ta.value : '', at: new Date().toISOString() }));
-      const old = saveBtn.innerHTML;
-      saveBtn.innerHTML = '<span class="text-emerald-600">✓ Đã lưu</span>';
-      setTimeout(() => (saveBtn.innerHTML = old), 1600);
-    } catch { alert('Không lưu được (localStorage bị chặn).'); }
+    if (ta) { ta.value = ''; ta.dispatchEvent(new Event('input', { bubbles: true })); ta.focus(); }
   });
 
-  /* ---------- Hồ sơ giáo viên (lưu localStorage) ---------- */
+  /* ---------- Giáo án: lưu NHIỀU bản (localStorage) ---------- */
+  const LESSONS_KEY = 'mathvision_lessons_v1';
+  const getLessons = () => {
+    try { const a = JSON.parse(localStorage.getItem(LESSONS_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch { return []; }
+  };
+  const setLessons = (list) => {
+    try { localStorage.setItem(LESSONS_KEY, JSON.stringify(list)); return true; } catch { return false; }
+  };
+  // Di trú dữ liệu từ bản cũ chỉ-một-ô (nếu có).
+  try {
+    const old = localStorage.getItem('mathvision_lesson');
+    if (old && !getLessons().length) {
+      const d = JSON.parse(old);
+      if (d && d.problem) setLessons([{ id: Date.now(), title: (d.problem.split('\n')[0] || 'Giáo án').slice(0, 60), problem: d.problem, at: d.at || new Date().toISOString() }]);
+      localStorage.removeItem('mathvision_lesson');
+    }
+  } catch {}
+
+  const saveBtn = $('#saveLesson');
+  function saveCurrentLesson() {
+    const ta = $('#tab-studio textarea');
+    const problem = (ta ? ta.value : '').trim();
+    if (!problem) { alert('Chưa có nội dung để lưu. Hãy nhập đề ở tab "Dựng hình 3D" trước.'); return false; }
+    const suggested = problem.split('\n')[0].slice(0, 60);
+    const title = (prompt('Tên giáo án:', suggested) || '').trim() || suggested || 'Giáo án';
+    const list = getLessons();
+    list.unshift({ id: Date.now(), title, problem, at: new Date().toISOString() });
+    if (!setLessons(list)) { alert('Không lưu được (localStorage bị chặn).'); return false; }
+    return true;
+  }
+  saveBtn && saveBtn.addEventListener('click', () => {
+    if (!saveCurrentLesson()) return;
+    const old = saveBtn.innerHTML;
+    saveBtn.innerHTML = '<span class="text-emerald-600">✓ Đã lưu</span>';
+    setTimeout(() => (saveBtn.innerHTML = old), 1600);
+  });
+
+  /* ---------- Hồ sơ giáo viên + Đăng nhập / Đăng xuất ---------- */
   const PROFILE_KEY = 'mathvision_profile';
   function initials(name) {
     const parts = (name || '').trim().split(/\s+/).filter(Boolean);
@@ -484,41 +511,107 @@
   }
   function getProfile() {
     try { const s = localStorage.getItem(PROFILE_KEY); if (s) return JSON.parse(s); } catch {}
-    return { name: 'Thầy Hùng', school: 'Amsterdam HN' };
+    return null; // null => chưa đăng nhập
   }
   function applyProfile(p) {
+    const prof = p || { name: 'Khách', school: '' };
+    const guest = !prof.name || prof.name === 'Khách';
     const ai = $('#avatarInitials'), pn = $('#profileName'), pb = $('#profileNameBig'), pr = $('#profileRole');
-    if (ai) ai.textContent = initials(p.name);
-    if (pn) pn.textContent = p.name || 'Khách';
-    if (pb) pb.textContent = p.name || 'Khách';
-    if (pr) pr.textContent = 'Giáo viên Toán' + (p.school ? ' · ' + p.school : '');
+    if (ai) ai.textContent = initials(prof.name);
+    if (pn) pn.textContent = prof.name || 'Khách';
+    if (pb) pb.textContent = prof.name || 'Khách';
+    if (pr) pr.textContent = guest ? 'Chưa đăng nhập' : ('Giáo viên Toán' + (prof.school ? ' · ' + prof.school : ''));
   }
+
+  /* --- Modal đăng nhập --- */
+  const loginModal = $('#loginModal');
+  const openModal = (m) => m && (m.classList.remove('hidden'), m.classList.add('flex'));
+  const hideModal = (m) => m && (m.classList.add('hidden'), m.classList.remove('flex'));
+  function showLogin() {
+    const cur = getProfile() || {};
+    if ($('#loginName')) $('#loginName').value = cur.name && cur.name !== 'Khách' ? cur.name : '';
+    if ($('#loginSchool')) $('#loginSchool').value = cur.school || '';
+    openModal(loginModal);
+    setTimeout(() => $('#loginName') && $('#loginName').focus(), 50);
+  }
+  function doLogin(name, school) {
+    const p = { name: (name || '').trim() || 'Khách', school: (school || '').trim() };
+    try { localStorage.setItem(PROFILE_KEY, JSON.stringify(p)); } catch {}
+    applyProfile(p); hideModal(loginModal);
+  }
+  const submitLogin = () => doLogin($('#loginName') && $('#loginName').value, $('#loginSchool') && $('#loginSchool').value);
+  $('#loginSubmit') && $('#loginSubmit').addEventListener('click', submitLogin);
+  $('#loginGuest') && $('#loginGuest').addEventListener('click', () => doLogin('Khách', ''));
+  [$('#loginName'), $('#loginSchool')].forEach((el) => el && el.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitLogin(); }));
+
+  /* --- Dropdown hồ sơ --- */
   const profileBtn = $('#profileBtn'), profileMenu = $('#profileMenu');
   const closeProfile = () => profileMenu && profileMenu.classList.add('hidden');
   profileBtn && profileBtn.addEventListener('click', (e) => { e.stopPropagation(); profileMenu.classList.toggle('hidden'); });
   profileMenu && profileMenu.addEventListener('click', (e) => e.stopPropagation());
   document.addEventListener('click', closeProfile);
-  $('#editProfile') && $('#editProfile').addEventListener('click', () => {
-    const cur = getProfile();
-    const name = prompt('Tên giáo viên:', cur.name || ''); if (name === null) return;
-    const school = prompt('Trường:', cur.school || '');
-    const p = { name: name.trim() || 'Khách', school: (school || '').trim() };
-    try { localStorage.setItem(PROFILE_KEY, JSON.stringify(p)); } catch {}
-    applyProfile(p); closeProfile();
-  });
-  $('#viewLessons') && $('#viewLessons').addEventListener('click', () => {
-    closeProfile();
-    try {
-      const s = localStorage.getItem('mathvision_lesson');
-      if (s) { const d = JSON.parse(s); alert('Giáo án đã lưu (' + new Date(d.at).toLocaleString('vi-VN') + '):\n\n' + (d.problem || '(trống)')); }
-      else alert('Chưa có giáo án nào. Dùng nút "Lưu giáo án" ở thanh trên để lưu đề hiện tại.');
-    } catch { alert('Không đọc được giáo án.'); }
-  });
+  $('#editProfile') && $('#editProfile').addEventListener('click', () => { closeProfile(); showLogin(); });
   $('#logout') && $('#logout').addEventListener('click', () => {
     try { localStorage.removeItem(PROFILE_KEY); } catch {}
-    applyProfile({ name: 'Khách', school: '' }); closeProfile();
+    applyProfile(null); closeProfile(); showLogin();
   });
-  applyProfile(getProfile());
+
+  /* --- Modal giáo án đã lưu --- */
+  const lessonsModal = $('#lessonsModal');
+  const fmtDate = (iso) => { try { return new Date(iso).toLocaleString('vi-VN'); } catch { return ''; } };
+  function openLesson(it) {
+    location.hash = 'studio';
+    const ta = $('#tab-studio textarea');
+    if (ta) { ta.value = it.problem || ''; ta.dispatchEvent(new Event('input', { bubbles: true })); ta.focus(); }
+    hideModal(lessonsModal);
+  }
+  function renderLessons() {
+    const wrap = $('#lessonsList'); if (!wrap) return;
+    const list = getLessons();
+    wrap.replaceChildren();
+    if (!list.length) {
+      const p = document.createElement('p');
+      p.className = 'px-3 py-10 text-center text-sm text-slate-400';
+      p.textContent = 'Chưa có giáo án nào. Nhập đề ở tab "Dựng hình 3D" rồi bấm "Lưu giáo án".';
+      wrap.append(p); return;
+    }
+    list.forEach((it) => {
+      const row = document.createElement('div');
+      row.className = 'mb-2 flex items-start gap-2 rounded-xl border border-slate-200 p-3 transition hover:border-slate-300';
+      const main = document.createElement('button');
+      main.className = 'min-w-0 flex-1 text-left';
+      const title = document.createElement('div');
+      title.className = 'truncate text-sm font-semibold text-slate-800';
+      title.textContent = it.title || 'Giáo án';
+      const meta = document.createElement('div');
+      meta.className = 'truncate text-xs text-slate-400';
+      meta.textContent = fmtDate(it.at) + ' · ' + (it.problem || '').replace(/\s+/g, ' ').slice(0, 80);
+      main.append(title, meta);
+      main.addEventListener('click', () => openLesson(it));
+      const del = document.createElement('button');
+      del.className = 'shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-rose-500 transition hover:bg-rose-50';
+      del.textContent = 'Xoá';
+      del.addEventListener('click', () => { setLessons(getLessons().filter((x) => x.id !== it.id)); renderLessons(); });
+      row.append(main, del);
+      wrap.append(row);
+    });
+  }
+  $('#saveLessonMenu') && $('#saveLessonMenu').addEventListener('click', () => { closeProfile(); if (saveCurrentLesson()) alert('✓ Đã lưu giáo án.'); });
+  $('#viewLessons') && $('#viewLessons').addEventListener('click', () => { closeProfile(); renderLessons(); openModal(lessonsModal); });
+  $('#lessonsClose') && $('#lessonsClose').addEventListener('click', () => hideModal(lessonsModal));
+  $('#lessonsClear') && $('#lessonsClear').addEventListener('click', () => {
+    if (!getLessons().length) return;
+    if (confirm('Xoá tất cả giáo án đã lưu trên thiết bị này?')) { setLessons([]); renderLessons(); }
+  });
+
+  // Đóng modal khi bấm nền tối hoặc Escape.
+  [loginModal, lessonsModal].forEach((m) => m && m.addEventListener('click', (e) => { if (e.target === m && m !== loginModal) hideModal(m); }));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideModal(lessonsModal); });
+
+  /* --- Init: hiện màn đăng nhập nếu chưa có hồ sơ --- */
+  const prof0 = getProfile();
+  applyProfile(prof0);
+  if (!prof0) showLogin();
 
   /* ---------- Init ---------- */
   const initial = location.hash.slice(1);
