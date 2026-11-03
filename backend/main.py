@@ -36,6 +36,10 @@ from gemini_client import (parse_geometry, grade_graph, grade_solution,
                            repair_geometry, repair_detailed_solution, solve_study_problem, is_configured)
 from geometry_validation import validate_scene_spec, validate_solution_spec
 from special_cases import exact_scene, exact_solution
+try:
+    from math_kernel import solve_math
+except Exception:  # SymPy chưa cài -> kernel tắt, dùng AI
+    solve_math = None
 from samples import (mock_grade, mock_solution, mock_ocr,
                      mock_latex)
 
@@ -261,6 +265,15 @@ def solve_study(req: StudySolveRequest):
     if len(problem) > 24_000:
         return JSONResponse({"error": "Đề văn bản quá dài (tối đa 24.000 ký tự)."}, status_code=413)
     try:
+        # Bộ máy ký hiệu TRƯỚC (kiểu Photomath): toán thuần -> đáp số chính xác,
+        # deterministic. Chỉ khi kernel không nhận dạng được (None) mới để AI giải.
+        if solve_math is not None and not images and problem:
+            try:
+                kernel = solve_math(problem, req.subject)
+            except Exception:
+                kernel = None
+            if kernel is not None:
+                return kernel
         result = solve_study_problem(problem, req.subject, images)
         if result is None:
             return JSONResponse({"error": "Gemini chưa được cấu hình trên máy chủ."}, status_code=503)
