@@ -150,6 +150,7 @@
   });
   $('copyMml') && $('copyMml').addEventListener('click', async () => {
     try {
+      if (!window.MathJax || !window.MathJax.tex2mml) throw new Error('MathJax chưa tải xong, thử lại sau 1-2 giây');
       await window.MathJax.startup.promise;
       const mml = window.MathJax.tex2mml(curLatex());
       await navigator.clipboard.writeText(mml);

@@ -65,6 +65,7 @@
 
     pageTitle.textContent = TABS[tab].title;
     pageSub.textContent = TABS[tab].sub;
+    window.dispatchEvent(new CustomEvent('mathvision:tab', { detail: tab }));
 
     if (pushHash && location.hash.slice(1) !== tab) {
       history.replaceState(null, '', `#${tab}`);
@@ -186,14 +187,15 @@
   const copyLabel = $('#copyLabel');
   if (copyBtn) {
     copyBtn.addEventListener('click', async () => {
-      const code = $('pre code')?.innerText || '';
+      const code = ($('#latexCode') || $('pre code'))?.innerText || '';
+      const orig = copyLabel.textContent;
       try {
         await navigator.clipboard.writeText(code);
         copyLabel.textContent = 'Đã copy!';
       } catch {
         copyLabel.textContent = 'Lỗi copy';
       }
-      setTimeout(() => (copyLabel.textContent = 'Copy'), 1600);
+      setTimeout(() => (copyLabel.textContent = orig), 1600);
     });
   }
 
@@ -311,25 +313,19 @@
     $('#studyFeedbackStatus').textContent = '';
   }
 
-  async function solveStudy({ images = [], openWeb = true, googleTab: suppliedGoogleTab = null } = {}) {
+  async function solveStudy({ images = [] } = {}) {
     const problem = studyInput?.value?.trim() || '';
     if (!problem && !images.length) {
       studyInput?.focus();
       alert('Nhập đề hoặc chụp/quét ảnh trước nhé.');
       return;
     }
-    // Open the search synchronously inside the user gesture so mobile browsers do not block it.
-    const googleTab = suppliedGoogleTab || (openWeb ? window.open(problem ? studyGoogleUrl(problem) : 'about:blank', '_blank') : null);
-    if (problem && googleTab) googleTab.location.href = studyGoogleUrl(problem);
-    const openedGoogle = Boolean(googleTab);
     const oldText = studySolveBtn.innerHTML;
     studySolveBtn.disabled = true;
     studySolveBtn.textContent = 'AI đang giải…';
     studyPanel.classList.remove('hidden');
-    $('#studyAnswerTitle').textContent = 'Đang đọc và giải đề';
-    $('#studyAnswerStatus').textContent = openedGoogle
-      ? 'Đã mở Google để đối chiếu song song. Hãy kiểm tra nguồn và ngày đăng của kết quả web.'
-      : (images.length ? 'Đang đọc ảnh và giải bằng AI…' : 'Đang giải bằng AI…');
+    $('#studyAnswerTitle').textContent = 'Đang đọc và giải đề…';
+    $('#studyAnswerStatus').textContent = images.length ? 'Đang đọc ảnh và giải từng bước…' : 'Đang giải từng bước…';
     $('#studyAnswerSteps').replaceChildren();
     $('#studyAnswerFinal').textContent = '';
     $('#studyAnswerNotes').textContent = '';
@@ -341,13 +337,10 @@
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || `HTTP ${response.status}`);
       renderStudyAnswer(data);
-      $('#studyAnswerStatus').textContent = `${data.subject || 'AI'} · ${openedGoogle ? 'Google đã mở để đối chiếu; xem nguồn gốc và ngày cập nhật.' : 'Có thể bấm “Chỉ tìm trên Google” để đối chiếu nguồn.'}`;
-      if (openedGoogle && data.recognized_problem && !problem) googleTab.location.href = studyGoogleUrl(data.recognized_problem);
+      $('#studyAnswerStatus').textContent = `${data.subject || 'AI'} · Lời giải từng bước. Muốn đối chiếu nguồn thì bấm “Tra cứu trên Google”.`;
     } catch (error) {
       $('#studyAnswerTitle').textContent = 'Chưa giải được đề';
       $('#studyAnswerStatus').textContent = error.message || 'Có lỗi kết nối.';
-      if (openedGoogle) $('#studyAnswerNotes').textContent = 'Google đã mở riêng để bạn tra cứu; kết quả tìm kiếm chưa được AI kiểm chứng tự động.';
-      if (googleTab && !problem) googleTab.close();
     } finally {
       studySolveBtn.disabled = false;
       studySolveBtn.innerHTML = oldText;
@@ -355,7 +348,7 @@
     }
   }
 
-  studySolveBtn?.addEventListener('click', () => solveStudy({ images: pendingStudyImages, openWeb: true }));
+  studySolveBtn?.addEventListener('click', () => solveStudy({ images: pendingStudyImages, openWeb: false }));
   $('#studyGood')?.addEventListener('click', () => {
     studyFeedbackRating = 'accepted';
     $('#studyCorrectionWrap').classList.remove('hidden');
@@ -420,7 +413,6 @@
     if (!openStudyGoogle(studyInput?.value?.trim() || '')) alert('Nhập đề bài trước khi tìm Google.');
   });
   studyCameraBtn?.addEventListener('click', async () => {
-    pendingGoogleTab = window.open('about:blank', '_blank');
     const scanner = window.MathVisionScanner || window.Capacitor?.Plugins?.DocumentScanner;
     if (!window.Capacitor?.isNativePlatform?.() || !scanner?.scan) {
       studyImageFile?.click();
@@ -428,22 +420,15 @@
     }
     const oldText = studyCameraBtn.textContent;
     studyCameraBtn.disabled = true;
-    studyCameraBtn.textContent = 'Đang mở Google Scanner…';
+    studyCameraBtn.textContent = 'Đang mở máy quét…';
     try {
       const result = await scanner.scan();
-      if (result.cancelled || !result.images?.length) {
-        pendingGoogleTab?.close();
-        pendingGoogleTab = null;
-        return;
-      }
+      if (result.cancelled || !result.images?.length) return;
       pendingStudyImages = result.images;
       studyCameraBtn.textContent = 'Đang gửi ảnh cho AI…';
-      await solveStudy({ images: pendingStudyImages, openWeb: true, googleTab: pendingGoogleTab });
-      pendingGoogleTab = null;
+      await solveStudy({ images: pendingStudyImages, openWeb: false });
     } catch (error) {
       alert('Không quét được ảnh: ' + error.message);
-      pendingGoogleTab?.close();
-      pendingGoogleTab = null;
     } finally {
       studyCameraBtn.disabled = false;
       studyCameraBtn.textContent = oldText;
@@ -454,13 +439,10 @@
     if (!file) return;
     try {
       pendingStudyImages = [await fileAsDataURL(file)];
-      await solveStudy({ images: pendingStudyImages, openWeb: true, googleTab: pendingGoogleTab });
-      pendingGoogleTab = null;
+      await solveStudy({ images: pendingStudyImages, openWeb: false });
     } catch (error) {
       alert('Không đọc được ảnh: ' + error.message);
     } finally {
-      if (pendingGoogleTab) pendingGoogleTab.close();
-      pendingGoogleTab = null;
       studyImageFile.value = '';
     }
   });

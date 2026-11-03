@@ -409,7 +409,7 @@ function deriveConstruction(spec) {
   const inBase = (e) => e.every((n) => baseNames.includes(n));
   const plan = [];
   plan.push({ title: 'Dựng đáy', body: 'Vẽ đa giác đáy trên hệ trục Oxyz.', color: 'solid',
-    points: baseNames.filter((n) => labels[n] || true),
+    points: baseNames,
     solidEdges: (spec.solidEdges || []).filter(inBase),
     dashedEdges: (spec.dashedEdges || []).filter(inBase),
     faces: (spec.faces || []).filter((f) => f.every((n) => baseNames.includes(n))),
@@ -893,7 +893,7 @@ function wire() {
     if (!lastProblem) { setStatus('Hãy dựng một đề ở ô "Đề bài THPT" trước.', 'warn'); return; }
     solveBtn.disabled = true; const old = solveBtn.innerHTML;
     solveBtn.innerHTML = 'Đang giải…';
-    try { await fetchDetailedSolution(lastProblem, geometryRequestId); }
+    try { await fetchDetailedSolution(lastProblem, ++geometryRequestId); }
     finally { solveBtn.disabled = false; solveBtn.innerHTML = old; }
   });
   const img = document.getElementById('img4k');
@@ -934,12 +934,16 @@ function fullscreen() {
 
 function exportImage() {
   if (!renderer) return;
-  renderer.render(scene, camera);
-  const a = document.createElement('a');
-  a.href = renderer.domElement.toDataURL('image/png');
-  a.download = ((currentSpec && currentSpec.title) || 'mathvision-3d').replace(/\s+/g, '_') + '.png';
-  a.click();
-  setStatus('✓ Đã xuất ảnh PNG.', 'ok');
+  try {
+    renderer.render(scene, camera);
+    const a = document.createElement('a');
+    a.href = renderer.domElement.toDataURL('image/png');
+    a.download = ((currentSpec && currentSpec.title) || 'mathvision-3d').replace(/\s+/g, '_') + '.png';
+    a.click();
+    setStatus('✓ Đã xuất ảnh PNG.', 'ok');
+  } catch (e) {
+    setStatus('Không xuất được ảnh trên thiết bị này: ' + e.message, 'warn');
+  }
 }
 function exportTikz() {
   if (!currentSpec) return;

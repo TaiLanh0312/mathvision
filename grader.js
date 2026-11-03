@@ -114,6 +114,7 @@
   function drawAnnotations() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const W = stage.clientWidth, H = stage.clientHeight;
+    if (!W || !H) return;
     overlay.width = W * dpr; overlay.height = H * dpr;
     const ctx = overlay.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -270,6 +271,7 @@
       const inp = $('gradeProblem'); if (inp) inp.value = b.dataset.graph;
     }));
   window.addEventListener('resize', () => annotations.length && drawAnnotations());
-  // dừng camera khi rời tab (đỡ tốn tài nguyên)
+  // dừng camera khi rời tab (đỡ tốn tài nguyên) — cả hashchange lẫn click sidebar
   window.addEventListener('hashchange', () => { if (location.hash.slice(1) !== 'grader') stopCamera(); });
+  window.addEventListener('mathvision:tab', (e) => { if (e.detail !== 'grader') stopCamera(); });
 })();
