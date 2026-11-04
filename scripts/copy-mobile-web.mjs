@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
 const output = resolve(root, 'www');
-const files = ['index.html', 'app.js', 'geometry3d.js', 'geokernel.js', 'grader.js', 'latex.js', 'mobile-bridge.js'];
+const files = ['index.html', 'app.js', 'geometry3d.js', 'geokernel.js', 'grader.js', 'latex.js', 'mobile-bridge.js', 'supabase-config.js', 'auth.js'];
 
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
@@ -16,4 +16,5 @@ await cp(resolve(root, 'node_modules/katex/dist/katex.min.css'), resolve(output,
 await cp(resolve(root, 'node_modules/katex/dist/katex.min.js'), resolve(output, 'vendor/katex.min.js'));
 await cp(resolve(root, 'node_modules/katex/dist/fonts'), resolve(output, 'vendor/fonts'), { recursive: true });
 await cp(resolve(root, 'node_modules/mathjax/es5'), resolve(output, 'vendor/mathjax'), { recursive: true });
+await cp(resolve(root, 'node_modules/@supabase/supabase-js/dist/umd/supabase.js'), resolve(output, 'vendor/supabase.js'));
 console.log(`Copied ${files.length} app files into www/`);

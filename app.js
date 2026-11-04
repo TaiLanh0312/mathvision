@@ -465,53 +465,78 @@
     if (ta) { ta.value = ''; ta.dispatchEvent(new Event('input', { bubbles: true })); ta.focus(); }
   });
 
-  /* ---------- Giáo án: lưu NHIỀU bản (localStorage) ---------- */
+  /* ============================================================
+     TÀI KHOẢN + GIÁO ÁN
+     - Có Supabase (window.MVAuth.configured) -> đăng nhập đám mây, đồng bộ đa thiết bị.
+     - Chưa cấu hình -> hồ sơ + giáo án lưu CỤC BỘ trên thiết bị (localStorage).
+     ============================================================ */
+  const cloud = (window.MVAuth && window.MVAuth.configured) ? window.MVAuth : null;
+  let cloudUser = null;                 // user đám mây đang đăng nhập (null nếu chưa)
+  const useCloud = () => !!(cloud && cloudUser);
+
+  /* --- Lưu trữ giáo án cục bộ --- */
   const LESSONS_KEY = 'mathvision_lessons_v1';
-  const getLessons = () => {
-    try { const a = JSON.parse(localStorage.getItem(LESSONS_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch { return []; }
-  };
-  const setLessons = (list) => {
-    try { localStorage.setItem(LESSONS_KEY, JSON.stringify(list)); return true; } catch { return false; }
-  };
-  // Di trú dữ liệu từ bản cũ chỉ-một-ô (nếu có).
+  const PROFILE_KEY = 'mathvision_profile';
+  const localGet = () => { try { const a = JSON.parse(localStorage.getItem(LESSONS_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } };
+  const localSet = (list) => { try { localStorage.setItem(LESSONS_KEY, JSON.stringify(list)); return true; } catch { return false; } };
+  // Di trú bản cũ chỉ-một-ô (nếu có).
   try {
     const old = localStorage.getItem('mathvision_lesson');
-    if (old && !getLessons().length) {
+    if (old && !localGet().length) {
       const d = JSON.parse(old);
-      if (d && d.problem) setLessons([{ id: Date.now(), title: (d.problem.split('\n')[0] || 'Giáo án').slice(0, 60), problem: d.problem, at: d.at || new Date().toISOString() }]);
+      if (d && d.problem) localSet([{ id: Date.now(), title: (d.problem.split('\n')[0] || 'Giáo án').slice(0, 60), problem: d.problem, at: d.at || new Date().toISOString() }]);
       localStorage.removeItem('mathvision_lesson');
     }
   } catch {}
 
-  const saveBtn = $('#saveLesson');
-  function saveCurrentLesson() {
+  /* --- Store hợp nhất (đám mây hoặc cục bộ) --- */
+  const Store = {
+    async list() { return useCloud() ? cloud.listLessons() : localGet(); },
+    async save(title, problem) {
+      if (useCloud()) { await cloud.saveLesson(title, problem); return true; }
+      const list = localGet();
+      list.unshift({ id: Date.now(), title, problem, at: new Date().toISOString() });
+      return localSet(list);
+    },
+    async del(id) {
+      if (useCloud()) return cloud.deleteLesson(id);
+      localSet(localGet().filter((x) => x.id !== id));
+    },
+    async clear() {
+      if (useCloud()) return cloud.clearLessons();
+      localSet([]);
+    },
+  };
+
+  /* --- Lưu đề hiện tại thành giáo án --- */
+  async function saveCurrentLesson() {
     const ta = $('#tab-studio textarea');
     const problem = (ta ? ta.value : '').trim();
     if (!problem) { alert('Chưa có nội dung để lưu. Hãy nhập đề ở tab "Dựng hình 3D" trước.'); return false; }
     const suggested = problem.split('\n')[0].slice(0, 60);
     const title = (prompt('Tên giáo án:', suggested) || '').trim() || suggested || 'Giáo án';
-    const list = getLessons();
-    list.unshift({ id: Date.now(), title, problem, at: new Date().toISOString() });
-    if (!setLessons(list)) { alert('Không lưu được (localStorage bị chặn).'); return false; }
-    return true;
+    try { await Store.save(title, problem); return true; }
+    catch (e) { alert('Không lưu được: ' + (e.message || e)); return false; }
   }
-  saveBtn && saveBtn.addEventListener('click', () => {
-    if (!saveCurrentLesson()) return;
+  const saveBtn = $('#saveLesson');
+  saveBtn && saveBtn.addEventListener('click', async () => {
     const old = saveBtn.innerHTML;
-    saveBtn.innerHTML = '<span class="text-emerald-600">✓ Đã lưu</span>';
-    setTimeout(() => (saveBtn.innerHTML = old), 1600);
+    saveBtn.disabled = true; saveBtn.innerHTML = '<span class="text-slate-400">Đang lưu…</span>';
+    const ok = await saveCurrentLesson();
+    saveBtn.innerHTML = ok ? '<span class="text-emerald-600">✓ Đã lưu</span>' : old;
+    setTimeout(() => { saveBtn.innerHTML = old; saveBtn.disabled = false; }, 1600);
   });
 
-  /* ---------- Hồ sơ giáo viên + Đăng nhập / Đăng xuất ---------- */
-  const PROFILE_KEY = 'mathvision_profile';
+  /* --- Hồ sơ hiển thị --- */
   function initials(name) {
     const parts = (name || '').trim().split(/\s+/).filter(Boolean);
     if (!parts.length) return '👤';
     return (parts.length > 1 ? parts[0][0] + parts[parts.length - 1][0] : parts[0].slice(0, 2)).toUpperCase();
   }
-  function getProfile() {
-    try { const s = localStorage.getItem(PROFILE_KEY); if (s) return JSON.parse(s); } catch {}
-    return null; // null => chưa đăng nhập
+  const getLocalProfile = () => { try { const s = localStorage.getItem(PROFILE_KEY); if (s) return JSON.parse(s); } catch {} return null; };
+  function profileFromUser(u) {
+    const m = (u && u.user_metadata) || {};
+    return { name: m.name || m.full_name || (u && u.email ? u.email.split('@')[0] : 'Giáo viên'), school: m.school || '' };
   }
   function applyProfile(p) {
     const prof = p || { name: 'Khách', school: '' };
@@ -520,29 +545,97 @@
     if (ai) ai.textContent = initials(prof.name);
     if (pn) pn.textContent = prof.name || 'Khách';
     if (pb) pb.textContent = prof.name || 'Khách';
-    if (pr) pr.textContent = guest ? 'Chưa đăng nhập' : ('Giáo viên Toán' + (prof.school ? ' · ' + prof.school : ''));
+    if (pr) pr.textContent = guest ? (cloud ? 'Khách (chưa đăng nhập đám mây)' : 'Chưa đăng nhập')
+      : ('Giáo viên Toán' + (prof.school ? ' · ' + prof.school : '') + (useCloud() ? ' · ☁ đồng bộ' : ''));
   }
 
   /* --- Modal đăng nhập --- */
   const loginModal = $('#loginModal');
   const openModal = (m) => m && (m.classList.remove('hidden'), m.classList.add('flex'));
   const hideModal = (m) => m && (m.classList.add('hidden'), m.classList.remove('flex'));
-  function showLogin() {
-    const cur = getProfile() || {};
-    if ($('#loginName')) $('#loginName').value = cur.name && cur.name !== 'Khách' ? cur.name : '';
-    if ($('#loginSchool')) $('#loginSchool').value = cur.school || '';
-    openModal(loginModal);
-    setTimeout(() => $('#loginName') && $('#loginName').focus(), 50);
+  const show = (el, on) => el && el.classList.toggle('hidden', !on);
+  const showErr = (msg) => { const e = $('#loginError'); if (e) { e.textContent = msg || ''; e.classList.toggle('hidden', !msg); } };
+  let authMode = 'signin';              // 'signin' | 'signup' (chỉ ở chế độ đám mây)
+
+  function renderLoginMode() {
+    showErr('');
+    const isSignup = authMode === 'signup';
+    if (cloud) {
+      show($('#loginGoogle'), true); $('#loginGoogle') && $('#loginGoogle').classList.add('flex');
+      show($('#loginOr'), true); $('#loginOr') && $('#loginOr').classList.add('flex');
+      show($('#emailFields'), true);
+      show($('#signupFields'), isSignup);
+      show($('#loginToggle'), true); show($('#loginForgot'), !isSignup);
+      $('#loginTitle') && ($('#loginTitle').textContent = isSignup ? 'Đăng ký' : 'Đăng nhập');
+      $('#loginSubtitle') && ($('#loginSubtitle').textContent = 'Đồng bộ giáo án trên mọi thiết bị.');
+      $('#loginSubmit') && ($('#loginSubmit').textContent = isSignup ? 'Đăng ký' : 'Đăng nhập');
+      $('#loginToggle') && ($('#loginToggle').textContent = isSignup ? 'Đã có tài khoản? Đăng nhập' : 'Chưa có tài khoản? Đăng ký');
+    } else {
+      // Cục bộ: chỉ tên + trường.
+      show($('#loginGoogle'), false); show($('#loginOr'), false);
+      show($('#emailFields'), false); show($('#signupFields'), true);
+      show($('#loginToggle'), false); show($('#loginForgot'), false);
+      const cur = getLocalProfile() || {};
+      if ($('#loginName')) $('#loginName').value = cur.name && cur.name !== 'Khách' ? cur.name : '';
+      if ($('#loginSchool')) $('#loginSchool').value = cur.school || '';
+      $('#loginTitle') && ($('#loginTitle').textContent = 'Đăng nhập');
+      $('#loginSubtitle') && ($('#loginSubtitle').textContent = 'Hồ sơ lưu trên thiết bị này.');
+      $('#loginSubmit') && ($('#loginSubmit').textContent = 'Vào ứng dụng');
+    }
   }
-  function doLogin(name, school) {
+  function showLogin() { renderLoginMode(); openModal(loginModal); setTimeout(() => (cloud ? $('#loginEmail') : $('#loginName'))?.focus(), 50); }
+
+  function doLocalLogin(name, school) {
     const p = { name: (name || '').trim() || 'Khách', school: (school || '').trim() };
     try { localStorage.setItem(PROFILE_KEY, JSON.stringify(p)); } catch {}
     applyProfile(p); hideModal(loginModal);
   }
-  const submitLogin = () => doLogin($('#loginName') && $('#loginName').value, $('#loginSchool') && $('#loginSchool').value);
+  function viError(e) {
+    const m = (e && e.message) || String(e || '');
+    if (/Invalid login credentials/i.test(m)) return 'Email hoặc mật khẩu không đúng.';
+    if (/already registered/i.test(m)) return 'Email này đã đăng ký. Hãy đăng nhập.';
+    if (/Password should be at least/i.test(m)) return 'Mật khẩu tối thiểu 6 ký tự.';
+    if (/Email not confirmed/i.test(m)) return 'Email chưa xác nhận. Hãy kiểm tra hộp thư.';
+    if (/Unable to validate email|invalid format/i.test(m)) return 'Email không hợp lệ.';
+    return m;
+  }
+  async function submitLogin() {
+    if (!cloud) { doLocalLogin($('#loginName')?.value, $('#loginSchool')?.value); return; }
+    const email = ($('#loginEmail')?.value || '').trim();
+    const pw = $('#loginPassword')?.value || '';
+    if (!email || !pw) { showErr('Nhập email và mật khẩu.'); return; }
+    const btn = $('#loginSubmit'); const old = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Đang xử lý…'; }
+    showErr('');
+    try {
+      if (authMode === 'signup') {
+        await cloud.signUpEmail(email, pw, { name: ($('#loginName')?.value || '').trim(), school: ($('#loginSchool')?.value || '').trim() });
+        const { data } = await cloud.client.auth.getSession();
+        if (!data || !data.session) { alert('Đã tạo tài khoản. Nếu được yêu cầu, hãy xác nhận email rồi đăng nhập.'); authMode = 'signin'; renderLoginMode(); }
+      } else {
+        await cloud.signInEmail(email, pw);
+      }
+      // Thành công -> onChange cập nhật UI và đóng modal.
+    } catch (err) { showErr(viError(err)); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = old; } }
+  }
   $('#loginSubmit') && $('#loginSubmit').addEventListener('click', submitLogin);
-  $('#loginGuest') && $('#loginGuest').addEventListener('click', () => doLogin('Khách', ''));
-  [$('#loginName'), $('#loginSchool')].forEach((el) => el && el.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitLogin(); }));
+  $('#loginGoogle') && $('#loginGoogle').addEventListener('click', async () => {
+    if (!cloud) return;
+    try { await cloud.signInGoogle(); } catch (e) { showErr(viError(e)); }
+  });
+  $('#loginToggle') && $('#loginToggle').addEventListener('click', () => { authMode = authMode === 'signup' ? 'signin' : 'signup'; renderLoginMode(); });
+  $('#loginForgot') && $('#loginForgot').addEventListener('click', async () => {
+    if (!cloud) return;
+    const email = prompt('Nhập email để nhận liên kết đặt lại mật khẩu:', ($('#loginEmail')?.value || '').trim());
+    if (!email) return;
+    try { await cloud.resetPassword(email.trim()); alert('Đã gửi email đặt lại mật khẩu (nếu email tồn tại).'); }
+    catch (e) { showErr(viError(e)); }
+  });
+  $('#loginGuest') && $('#loginGuest').addEventListener('click', () => doLocalLogin('Khách', ''));
+  ['#loginName', '#loginSchool', '#loginEmail', '#loginPassword'].forEach((sel) => {
+    const el = $(sel); el && el.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitLogin(); });
+  });
 
   /* --- Dropdown hồ sơ --- */
   const profileBtn = $('#profileBtn'), profileMenu = $('#profileMenu');
@@ -550,10 +643,12 @@
   profileBtn && profileBtn.addEventListener('click', (e) => { e.stopPropagation(); profileMenu.classList.toggle('hidden'); });
   profileMenu && profileMenu.addEventListener('click', (e) => e.stopPropagation());
   document.addEventListener('click', closeProfile);
-  $('#editProfile') && $('#editProfile').addEventListener('click', () => { closeProfile(); showLogin(); });
-  $('#logout') && $('#logout').addEventListener('click', () => {
+  $('#editProfile') && $('#editProfile').addEventListener('click', () => { closeProfile(); authMode = cloud && !cloudUser ? 'signin' : authMode; showLogin(); });
+  $('#logout') && $('#logout').addEventListener('click', async () => {
+    closeProfile();
     try { localStorage.removeItem(PROFILE_KEY); } catch {}
-    applyProfile(null); closeProfile(); showLogin();
+    if (cloud && cloudUser) { try { await cloud.signOut(); } catch {} }
+    cloudUser = null; applyProfile(null); showLogin();
   });
 
   /* --- Modal giáo án đã lưu --- */
@@ -565,9 +660,15 @@
     if (ta) { ta.value = it.problem || ''; ta.dispatchEvent(new Event('input', { bubbles: true })); ta.focus(); }
     hideModal(lessonsModal);
   }
-  function renderLessons() {
+  async function renderLessons() {
     const wrap = $('#lessonsList'); if (!wrap) return;
-    const list = getLessons();
+    wrap.replaceChildren();
+    const loading = document.createElement('p');
+    loading.className = 'px-3 py-10 text-center text-sm text-slate-400';
+    loading.textContent = 'Đang tải…';
+    wrap.append(loading);
+    let list = [];
+    try { list = await Store.list(); } catch (e) { loading.textContent = 'Lỗi tải giáo án: ' + (e.message || e); return; }
     wrap.replaceChildren();
     if (!list.length) {
       const p = document.createElement('p');
@@ -591,27 +692,42 @@
       const del = document.createElement('button');
       del.className = 'shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-rose-500 transition hover:bg-rose-50';
       del.textContent = 'Xoá';
-      del.addEventListener('click', () => { setLessons(getLessons().filter((x) => x.id !== it.id)); renderLessons(); });
+      del.addEventListener('click', async () => { try { await Store.del(it.id); } catch (e) { alert('Không xoá được: ' + (e.message || e)); } renderLessons(); });
       row.append(main, del);
       wrap.append(row);
     });
   }
-  $('#saveLessonMenu') && $('#saveLessonMenu').addEventListener('click', () => { closeProfile(); if (saveCurrentLesson()) alert('✓ Đã lưu giáo án.'); });
-  $('#viewLessons') && $('#viewLessons').addEventListener('click', () => { closeProfile(); renderLessons(); openModal(lessonsModal); });
+  $('#saveLessonMenu') && $('#saveLessonMenu').addEventListener('click', async () => { closeProfile(); if (await saveCurrentLesson()) alert('✓ Đã lưu giáo án.'); });
+  $('#viewLessons') && $('#viewLessons').addEventListener('click', () => { closeProfile(); openModal(lessonsModal); renderLessons(); });
   $('#lessonsClose') && $('#lessonsClose').addEventListener('click', () => hideModal(lessonsModal));
-  $('#lessonsClear') && $('#lessonsClear').addEventListener('click', () => {
-    if (!getLessons().length) return;
-    if (confirm('Xoá tất cả giáo án đã lưu trên thiết bị này?')) { setLessons([]); renderLessons(); }
+  $('#lessonsClear') && $('#lessonsClear').addEventListener('click', async () => {
+    if (confirm('Xoá tất cả giáo án đã lưu?')) { try { await Store.clear(); } catch (e) { alert('Không xoá được: ' + (e.message || e)); } renderLessons(); }
   });
 
-  // Đóng modal khi bấm nền tối hoặc Escape.
+  // Đóng modal khi bấm nền tối (trừ loginModal) hoặc Escape.
   [loginModal, lessonsModal].forEach((m) => m && m.addEventListener('click', (e) => { if (e.target === m && m !== loginModal) hideModal(m); }));
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideModal(lessonsModal); });
 
-  /* --- Init: hiện màn đăng nhập nếu chưa có hồ sơ --- */
-  const prof0 = getProfile();
-  applyProfile(prof0);
-  if (!prof0) showLogin();
+  /* --- Init trạng thái đăng nhập --- */
+  if (cloud) {
+    cloud.onChange((user) => {
+      cloudUser = user;
+      if (user) { applyProfile(profileFromUser(user)); hideModal(loginModal); }
+    });
+    cloud.currentUser().then((user) => {
+      cloudUser = user;
+      if (user) { applyProfile(profileFromUser(user)); hideModal(loginModal); }
+      else {
+        const local = getLocalProfile();
+        if (local) applyProfile(local);   // đang dùng chế độ Khách/cục bộ
+        else { applyProfile(null); showLogin(); }
+      }
+    }).catch(() => { applyProfile(getLocalProfile()); if (!getLocalProfile()) showLogin(); });
+  } else {
+    const local = getLocalProfile();
+    applyProfile(local);
+    if (!local) showLogin();
+  }
 
   /* ---------- Init ---------- */
   const initial = location.hash.slice(1);

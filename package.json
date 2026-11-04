@@ -12,6 +12,7 @@
   "dependencies": {
     "@capacitor/android": "8.6.0",
     "@capacitor/core": "8.6.0",
+    "@supabase/supabase-js": "^2.118.0",
     "katex": "0.19.1",
     "mathjax": "3.2.2",
     "three": "0.160.0"
