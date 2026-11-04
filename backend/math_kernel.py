@@ -125,15 +125,20 @@ def _parse(expr_str: str):
     return parse_expr(expr_str, transformations=_TRANSFORMS, local_dict=local, evaluate=True)
 
 
-def _fmt(e) -> str:
-    """Chuỗi toán dễ đọc: ^ thay cho **, bỏ ký tự rườm rà."""
+def _tex(e) -> str:
+    """LaTeX của biểu thức (để frontend render KaTeX)."""
     try:
-        s = sp.sstr(e)
+        return sp.latex(e)
     except Exception:
-        s = str(e)
-    s = s.replace("**", "^").replace("*", "·")
-    s = s.replace("sqrt", "√").replace("(√", "√(")
-    return s
+        return str(e)
+
+
+def L(e) -> str:
+    r"""Bọc biểu thức trong \( \) cho KaTeX."""
+    return r"\(" + _tex(e) + r"\)"
+
+
+_fmt = _tex  # tương thích ngược
 
 
 def _step(title: str, explanation: str) -> dict:
@@ -149,52 +154,53 @@ def _solve_equation(body: str) -> dict | None:
     lhs_s, rhs_s = body.split("=", 1)
     lhs, rhs = _parse(lhs_s), _parse(rhs_s)
     var = _var_of(lhs, rhs)
+    vt = _tex(var)
     expr = sp.expand(lhs - rhs)
     steps = [_step("Đưa về một vế",
-                   f"Phương trình: {_fmt(lhs)} = {_fmt(rhs)}\n"
-                   f"Chuyển vế: {_fmt(expr)} = 0")]
+                   rf"Phương trình: \({_tex(lhs)} = {_tex(rhs)}\)" + "\n" +
+                   rf"Chuyển vế: \({_tex(expr)} = 0\)")]
 
     poly = sp.Poly(expr, var) if expr.free_symbols == {var} and expr.is_polynomial(var) else None
     if poly is not None and poly.degree() == 1:
         a, b = poly.all_coeffs()
         root = sp.simplify(-b / a)
         steps.append(_step("Giải phương trình bậc nhất",
-                           f"{_fmt(a)}·{var} + {_fmt(b)} = 0  ⇒  {var} = {_fmt(sp.nsimplify(-b))}/{_fmt(a)} = {_fmt(root)}"))
+                           rf"\({_tex(a)}{vt} + {_tex(b)} = 0 \Rightarrow {vt} = {_tex(root)}\)"))
         sols = [root]
     elif poly is not None and poly.degree() == 2:
         a, b, c = poly.all_coeffs()
         disc = sp.simplify(b**2 - 4*a*c)
         steps.append(_step("Xác định hệ số",
-                           f"a = {_fmt(a)}, b = {_fmt(b)}, c = {_fmt(c)}"))
+                           rf"\(a = {_tex(a)},\ b = {_tex(b)},\ c = {_tex(c)}\)"))
         steps.append(_step("Tính biệt thức Δ",
-                           f"Δ = b² − 4ac = ({_fmt(b)})² − 4·({_fmt(a)})·({_fmt(c)}) = {_fmt(disc)}"))
+                           rf"\(\Delta = b^2 - 4ac = {_tex(disc)}\)"))
         dnum = sp.N(disc)
         if disc == 0:
             r = sp.simplify(-b / (2*a))
             steps.append(_step("Δ = 0 ⇒ nghiệm kép",
-                               f"{var} = −b/(2a) = {_fmt(r)}"))
+                               rf"\({vt} = -\dfrac{{b}}{{2a}} = {_tex(r)}\)"))
             sols = [r]
         elif dnum.is_real and dnum < 0:
             sols = sp.solve(sp.Eq(expr, 0), var)
             steps.append(_step("Δ < 0",
                                "Phương trình vô nghiệm trên tập số thực."
-                               + (f" Nghiệm phức: {', '.join(_fmt(s) for s in sols)}" if sols else "")))
+                               + (" Nghiệm phức: " + ", ".join(L(s) for s in sols) if sols else "")))
         else:
             r1 = sp.simplify((-b + sp.sqrt(disc)) / (2*a))
             r2 = sp.simplify((-b - sp.sqrt(disc)) / (2*a))
             steps.append(_step("Δ > 0 ⇒ hai nghiệm phân biệt",
-                               f"{var} = (−b ± √Δ)/(2a)\n"
-                               f"{var}₁ = {_fmt(r1)}\n{var}₂ = {_fmt(r2)}"))
+                               rf"\({vt} = \dfrac{{-b \pm \sqrt{{\Delta}}}}{{2a}}\)" + "\n"
+                               + rf"\({vt}_1 = {_tex(r1)}\)" + "\n" + rf"\({vt}_2 = {_tex(r2)}\)"))
             sols = [r1, r2]
     else:
         factored = sp.factor(expr)
         if factored != expr:
-            steps.append(_step("Phân tích thành nhân tử", f"{_fmt(factored)} = 0"))
+            steps.append(_step("Phân tích thành nhân tử", rf"\({_tex(factored)} = 0\)"))
         sols = sp.solve(sp.Eq(expr, 0), var, dict=False)
         if not isinstance(sols, (list, tuple)):
             sols = [sols]
         steps.append(_step("Nghiệm", "Giải ra: " +
-                           (", ".join(f"{var} = {_fmt(s)}" for s in sols) if sols else "vô nghiệm")))
+                           (", ".join(rf"\({vt} = {_tex(s)}\)" for s in sols) if sols else "vô nghiệm")))
 
     # Xác minh bằng cách thế lại (đặc trưng của kernel: luôn kiểm chứng)
     checked = []
@@ -207,12 +213,12 @@ def _solve_equation(body: str) -> dict | None:
     if checked and len(checked) != len(sols):
         steps.append(_step("Thử lại nghiệm",
                            "Sau khi thế lại, nghiệm hợp lệ: " +
-                           ", ".join(f"{var} = {_fmt(s)}" for s in checked)))
+                           ", ".join(rf"\({vt} = {_tex(s)}\)" for s in checked)))
         sols = checked
 
     answer = ("Vô nghiệm (trên ℝ)" if not sols
-              else "; ".join(f"{var} = {_fmt(s)}" for s in sols))
-    return _pack("Giải phương trình", f"{_fmt(lhs)} = {_fmt(rhs)}", steps, answer)
+              else "; ".join(rf"\({vt} = {_tex(s)}\)" for s in sols))
+    return _pack("Giải phương trình", rf"\({_tex(lhs)} = {_tex(rhs)}\)", steps, answer)
 
 
 def _solve_inequality(body: str) -> dict | None:
@@ -225,83 +231,89 @@ def _solve_inequality(body: str) -> dict | None:
     var = _var_of(lhs, rhs)
     rel = {"<=": sp.Le, ">=": sp.Ge, "<": sp.Lt, ">": sp.Gt}[op]
     ineq = rel(lhs, rhs)
+    vt = _tex(var)
+    ot = {"<=": r"\le", ">=": r"\ge", "<": "<", ">": ">"}[op]
     try:
         sol = sp.solve_univariate_inequality(ineq, var, relational=False)
     except Exception:
         sol = sp.reduce_inequalities(ineq, var)
     steps = [
-        _step("Bất phương trình", f"{_fmt(lhs)} {op} {_fmt(rhs)}"),
-        _step("Chuyển vế", f"{_fmt(sp.expand(lhs - rhs))} {op} 0"),
-        _step("Tập nghiệm", f"{var} ∈ {sol}"),
+        _step("Bất phương trình", rf"\({_tex(lhs)} {ot} {_tex(rhs)}\)"),
+        _step("Chuyển vế", rf"\({_tex(sp.expand(lhs - rhs))} {ot} 0\)"),
+        _step("Tập nghiệm", rf"\({vt} \in {_tex(sol)}\)"),
     ]
-    return _pack("Giải bất phương trình", f"{_fmt(lhs)} {op} {_fmt(rhs)}", steps, f"{var} ∈ {sol}")
+    return _pack("Giải bất phương trình", rf"\({_tex(lhs)} {ot} {_tex(rhs)}\)", steps, rf"\({vt} \in {_tex(sol)}\)")
 
 
 def _derivative(body: str) -> dict | None:
     expr = _parse(body)
     var = _var_of(expr)
+    vt = _tex(var)
     d = sp.diff(expr, var)
     ds = sp.simplify(d)
-    steps = [_step("Hàm số", f"f({var}) = {_fmt(expr)}"),
-             _step("Tính đạo hàm", f"f'({var}) = {_fmt(d)}")]
+    steps = [_step("Hàm số", rf"\(f({vt}) = {_tex(expr)}\)"),
+             _step("Tính đạo hàm", rf"\(f'({vt}) = {_tex(d)}\)")]
     if ds != d:
-        steps.append(_step("Rút gọn", f"f'({var}) = {_fmt(ds)}"))
-    return _pack("Tính đạo hàm", f"f({var}) = {_fmt(expr)}", steps, f"f'({var}) = {_fmt(ds)}")
+        steps.append(_step("Rút gọn", rf"\(f'({vt}) = {_tex(ds)}\)"))
+    return _pack("Tính đạo hàm", rf"\(f({vt}) = {_tex(expr)}\)", steps, rf"\(f'({vt}) = {_tex(ds)}\)")
 
 
 def _integral(body: str, definite=None) -> dict | None:
     expr = _parse(body)
     var = _var_of(expr)
+    vt = _tex(var)
     if definite:
         lo, hi = definite
         a, b = _parse(lo), _parse(hi)
         F = sp.integrate(expr, var)
         val = sp.simplify(sp.integrate(expr, (var, a, b)))
         steps = [
-            _step("Nguyên hàm", f"∫ {_fmt(expr)} d{var} = {_fmt(F)} + C"),
-            _step("Thay cận", f"[{_fmt(F)}] từ {_fmt(a)} đến {_fmt(b)} = {_fmt(F.subs(var, b))} − {_fmt(F.subs(var, a))}"),
-            _step("Kết quả", f"= {_fmt(val)}"),
+            _step("Nguyên hàm", rf"\(\int {_tex(expr)}\,d{vt} = {_tex(F)} + C\)"),
+            _step("Thay cận", rf"\(\left[{_tex(F)}\right]_{{{_tex(a)}}}^{{{_tex(b)}}} = {_tex(F.subs(var, b))} - {_tex(F.subs(var, a))}\)"),
+            _step("Kết quả", rf"\(= {_tex(val)}\)"),
         ]
-        return _pack("Tính tích phân", f"∫ từ {_fmt(a)} đến {_fmt(b)} của {_fmt(expr)} d{var}", steps, _fmt(val))
+        return _pack("Tính tích phân", rf"\(\int_{{{_tex(a)}}}^{{{_tex(b)}}} {_tex(expr)}\,d{vt}\)", steps, L(val))
     F = sp.integrate(expr, var)
-    steps = [_step("Hàm dưới dấu tích phân", f"{_fmt(expr)}"),
-             _step("Tìm nguyên hàm", f"∫ {_fmt(expr)} d{var} = {_fmt(F)} + C")]
-    return _pack("Tìm nguyên hàm", f"∫ {_fmt(expr)} d{var}", steps, f"{_fmt(F)} + C")
+    steps = [_step("Hàm dưới dấu tích phân", L(expr)),
+             _step("Tìm nguyên hàm", rf"\(\int {_tex(expr)}\,d{vt} = {_tex(F)} + C\)")]
+    return _pack("Tìm nguyên hàm", rf"\(\int {_tex(expr)}\,d{vt}\)", steps, rf"\({_tex(F)} + C\)")
 
 
 def _limit(body: str, point: str, direction: str = "+-") -> dict | None:
     expr = _parse(body)
     var = _var_of(expr)
+    vt = _tex(var)
     p = _parse(point)
     try:
-        L = sp.limit(expr, var, p, direction if direction in ("+", "-") else "+")
+        lim = sp.limit(expr, var, p, direction if direction in ("+", "-") else "+")
     except Exception:
-        L = sp.limit(expr, var, p)
-    steps = [_step("Biểu thức", f"lim ({var}→{_fmt(p)}) {_fmt(expr)}"),
-             _step("Kết quả", f"= {_fmt(L)}")]
-    return _pack("Tính giới hạn", f"lim ({var}→{_fmt(p)}) {_fmt(expr)}", steps, _fmt(L))
+        lim = sp.limit(expr, var, p)
+    lt = rf"\lim_{{{vt} \to {_tex(p)}}} {_tex(expr)}"
+    steps = [_step("Biểu thức", rf"\({lt}\)"),
+             _step("Kết quả", rf"\(= {_tex(lim)}\)")]
+    return _pack("Tính giới hạn", rf"\({lt}\)", steps, L(lim))
 
 
 def _factor(body: str) -> dict | None:
     expr = _parse(body)
     f = sp.factor(expr)
-    steps = [_step("Biểu thức", _fmt(expr)),
-             _step("Phân tích thành nhân tử", _fmt(f))]
-    return _pack("Phân tích thành nhân tử", _fmt(expr), steps, _fmt(f))
+    steps = [_step("Biểu thức", L(expr)),
+             _step("Phân tích thành nhân tử", L(f))]
+    return _pack("Phân tích thành nhân tử", L(expr), steps, L(f))
 
 
 def _expand(body: str) -> dict | None:
     expr = _parse(body)
     e = sp.expand(expr)
-    steps = [_step("Biểu thức", _fmt(expr)), _step("Khai triển", _fmt(e))]
-    return _pack("Khai triển", _fmt(expr), steps, _fmt(e))
+    steps = [_step("Biểu thức", L(expr)), _step("Khai triển", L(e))]
+    return _pack("Khai triển", L(expr), steps, L(e))
 
 
 def _simplify(body: str) -> dict | None:
     expr = _parse(body)
     e = sp.simplify(expr)
-    steps = [_step("Biểu thức", _fmt(expr)), _step("Rút gọn", _fmt(e))]
-    return _pack("Rút gọn biểu thức", _fmt(expr), steps, _fmt(e))
+    steps = [_step("Biểu thức", L(expr)), _step("Rút gọn", L(e))]
+    return _pack("Rút gọn biểu thức", L(expr), steps, L(e))
 
 
 def _evaluate(body: str) -> dict | None:
@@ -310,9 +322,12 @@ def _evaluate(body: str) -> dict | None:
     expr = _parse(body)
     val = sp.simplify(expr)
     num = sp.N(val, 10)
-    ans = _fmt(val) + (f" ≈ {num}" if val != num and not val.is_Integer else "")
-    steps = [_step("Phép tính", _fmt(expr)), _step("Kết quả", ans)]
-    return _pack("Tính giá trị biểu thức", _fmt(expr), steps, ans)
+    if val != num and not val.is_Integer:
+        ans = rf"\({_tex(val)} \approx {_tex(num)}\)"
+    else:
+        ans = L(val)
+    steps = [_step("Phép tính", L(expr)), _step("Kết quả", ans)]
+    return _pack("Tính giá trị biểu thức", L(expr), steps, ans)
 
 
 def _solve_system(parts: list[str]) -> dict | None:
@@ -326,13 +341,14 @@ def _solve_system(parts: list[str]) -> dict | None:
     if not syms:
         return None
     sol = sp.solve(eqs, syms, dict=True)
-    steps = [_step("Hệ phương trình", "\n".join(f"{_fmt(e.lhs)} = {_fmt(e.rhs)}" for e in eqs))]
+    recognized = " ; ".join(rf"\({_tex(e.lhs)} = {_tex(e.rhs)}\)" for e in eqs)
+    steps = [_step("Hệ phương trình", "\n".join(rf"\({_tex(e.lhs)} = {_tex(e.rhs)}\)" for e in eqs))]
     if not sol:
         steps.append(_step("Kết luận", "Hệ vô nghiệm."))
-        return _pack("Giải hệ phương trình", " ; ".join(_fmt(e.lhs) + "=" + _fmt(e.rhs) for e in eqs), steps, "Vô nghiệm")
-    ans = " ; ".join(", ".join(f"{_fmt(k)} = {_fmt(v)}" for k, v in s.items()) for s in sol)
+        return _pack("Giải hệ phương trình", recognized, steps, "Vô nghiệm")
+    ans = " ; ".join(", ".join(rf"\({_tex(k)} = {_tex(v)}\)" for k, v in s.items()) for s in sol)
     steps.append(_step("Nghiệm", ans))
-    return _pack("Giải hệ phương trình", " ; ".join(_fmt(e.lhs) + "=" + _fmt(e.rhs) for e in eqs), steps, ans)
+    return _pack("Giải hệ phương trình", recognized, steps, ans)
 
 
 def _pack(title, recognized, steps, answer) -> dict:
