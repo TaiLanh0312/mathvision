@@ -157,9 +157,16 @@ def _extract_json(text: str) -> dict:
 
 
 def _fix_latex_backslashes(t: str) -> str:
-    r"""Nhân đôi các backslash KHÔNG thuộc escape JSON hợp lệ (\" \\ \/ \b \f \n \r \t \u)
-    để json.loads giữ được LaTeX như \dfrac, \sqrt, \(, \[ ... (không bị nuốt mất dấu \)."""
-    return re.sub(r'\\(["\\/bfnrtu])|\\', lambda m: m.group(0) if m.group(1) else '\\\\', t)
+    r"""Nhân đôi backslash của LaTeX để json.loads giữ nguyên công thức.
+
+    CHỈ giữ các escape JSON thực sự cần cho cấu trúc chuỗi: \" \\ \/ và \uXXXX.
+    CỐ Ý nhân đôi cả \b \f \n \r \t vì trong ngữ cảnh này chúng hầu như luôn là
+    lệnh LaTeX (\frac, \neq, \times, \text, \bar, \rho...) chứ không phải ký tự điều
+    khiển; nếu giữ nguyên sẽ biến \frac -> formfeed+"rac", \neq -> xuống dòng+"eq"."""
+    def repl(m):
+        g = m.group(0)              # '\uXXXX' (6) | '\"' '\\' '\/' (2) | '\' đơn (1)
+        return '\\\\' if len(g) == 1 else g
+    return re.sub(r'\\u[0-9a-fA-F]{4}|\\["\\/]|\\', repl, t)
 
 
 def _generate_json_with_retry(client, model: str, contents, config):
