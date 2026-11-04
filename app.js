@@ -538,10 +538,12 @@
   /* --- Lưu đề hiện tại thành giáo án --- */
   async function saveCurrentLesson() {
     const ta = $('#tab-studio textarea');
-    const problem = (ta ? ta.value : '').trim();
+    let problem = (ta ? ta.value : '').trim();
     if (!problem) { alert('Chưa có nội dung để lưu. Hãy nhập đề ở tab "Dựng hình 3D" trước.'); return false; }
+    if (problem.length > 20000) { alert('Nội dung quá dài (tối đa 20.000 ký tự).'); return false; }
     const suggested = problem.split('\n')[0].slice(0, 60);
-    const title = (prompt('Tên giáo án:', suggested) || '').trim() || suggested || 'Giáo án';
+    let title = (prompt('Tên giáo án:', suggested) || '').trim() || suggested || 'Giáo án';
+    title = title.slice(0, 200);                 // khớp giới hạn CHECK ở DB
     try { await Store.save(title, problem); return true; }
     catch (e) { alert('Không lưu được: ' + (e.message || e)); return false; }
   }
