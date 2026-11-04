@@ -153,7 +153,23 @@ def _extract_json(text: str) -> dict:
                 raise ValueError(f"Phản hồi AI không phải JSON hợp lệ: {strict_error}") from tolerant_error
     if not isinstance(result, dict):
         raise ValueError("Phản hồi AI phải là một object JSON.")
-    return result
+    return _restore_whitespace(result)
+
+
+_WS_ESCAPE = re.compile(r'\\([nrt])(?![A-Za-z])')  # \n \r \t KHÔNG theo sau bởi chữ -> là xuống dòng/tab
+
+
+def _restore_whitespace(obj):
+    r"""Sau khi giữ LaTeX, "\n"/"\t" do AI dùng để xuống dòng còn ở dạng chữ "\n".
+    Đổi về khoảng trắng thật — chỉ khi KHÔNG theo sau bởi chữ cái (để không đụng
+    lệnh LaTeX \neq, \nu, \tan, \times, \theta, \rho...)."""
+    if isinstance(obj, str):
+        return _WS_ESCAPE.sub(lambda m: '\n' if m.group(1) == 'n' else ' ', obj)
+    if isinstance(obj, list):
+        return [_restore_whitespace(x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _restore_whitespace(v) for k, v in obj.items()}
+    return obj
 
 
 def _fix_latex_backslashes(t: str) -> str:
