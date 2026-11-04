@@ -140,13 +140,26 @@ def _extract_json(text: str) -> dict:
     try:
         result = json.loads(t)
     except json.JSONDecodeError as strict_error:
+        # AI thường trả LaTeX "\dfrac", "\(", "\sqrt"... "\d"/"\(" KHÔNG phải escape JSON
+        # hợp lệ -> json5 sẽ NUỐT dấu "\" (\dfrac -> dfrac) làm hỏng công thức.
+        # Nhân đôi mọi backslash không thuộc escape hợp lệ để giữ nguyên LaTeX.
+        fixed = _fix_latex_backslashes(t)
         try:
-            result = json5.loads(t, allow_duplicate_keys=False)
-        except Exception as tolerant_error:
-            raise ValueError(f"Phản hồi AI không phải JSON hợp lệ: {strict_error}") from tolerant_error
+            result = json.loads(fixed)
+        except json.JSONDecodeError:
+            try:
+                result = json5.loads(fixed, allow_duplicate_keys=False)
+            except Exception as tolerant_error:
+                raise ValueError(f"Phản hồi AI không phải JSON hợp lệ: {strict_error}") from tolerant_error
     if not isinstance(result, dict):
         raise ValueError("Phản hồi AI phải là một object JSON.")
     return result
+
+
+def _fix_latex_backslashes(t: str) -> str:
+    r"""Nhân đôi các backslash KHÔNG thuộc escape JSON hợp lệ (\" \\ \/ \b \f \n \r \t \u)
+    để json.loads giữ được LaTeX như \dfrac, \sqrt, \(, \[ ... (không bị nuốt mất dấu \)."""
+    return re.sub(r'\\(["\\/bfnrtu])|\\', lambda m: m.group(0) if m.group(1) else '\\\\', t)
 
 
 def _generate_json_with_retry(client, model: str, contents, config):
