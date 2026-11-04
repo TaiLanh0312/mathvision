@@ -283,6 +283,27 @@
     return query ? `https://www.google.com/search?q=${encodeURIComponent(query)}` : '';
   }
 
+  // Render chữ có lẫn công thức LaTeX (\( \), \[ \], $…$, $$…$$) bằng KaTeX.
+  function renderMathInto(el, text) {
+    el.replaceChildren();
+    const s = text == null ? '' : String(text);
+    if (!s) return;
+    if (!window.katex) { el.textContent = s; return; }
+    const re = /\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)|\$([^$\n]+?)\$/g;
+    let last = 0, m;
+    while ((m = re.exec(s))) {
+      if (m.index > last) el.appendChild(document.createTextNode(s.slice(last, m.index)));
+      const display = (m[1] !== undefined) || (m[2] !== undefined);
+      const tex = m[1] !== undefined ? m[1] : m[2] !== undefined ? m[2] : m[3] !== undefined ? m[3] : m[4];
+      const span = document.createElement('span');
+      try { window.katex.render(tex, span, { displayMode: display, throwOnError: false }); }
+      catch { span.textContent = tex; }
+      el.appendChild(span);
+      last = re.lastIndex;
+    }
+    if (last < s.length) el.appendChild(document.createTextNode(s.slice(last)));
+  }
+
   function renderStudyAnswer(result) {
     currentStudyResult = result;
     studyFeedbackRating = '';
@@ -302,11 +323,17 @@
       heading.textContent = step.title || `Bước ${index + 1}`;
       const body = document.createElement('div');
       body.className = 'whitespace-pre-wrap';
-      body.textContent = step.explanation || '';
+      renderMathInto(body, step.explanation || '');
       item.append(heading, body);
       steps.append(item);
     });
-    $('#studyAnswerFinal').textContent = result.answer ? `Kết luận: ${result.answer}` : '';
+    const fin = $('#studyAnswerFinal');
+    if (result.answer) {
+      fin.replaceChildren();
+      const lbl = document.createElement('span'); lbl.textContent = 'Kết luận: ';
+      const val = document.createElement('span'); renderMathInto(val, result.answer);
+      fin.append(lbl, val);
+    } else fin.textContent = '';
     $('#studyAnswerNotes').textContent = Array.isArray(result.notes) ? result.notes.join(' · ') : '';
     $('#studyCorrectionWrap').classList.add('hidden');
     $('#studyCorrection').value = '';
